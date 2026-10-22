@@ -50,52 +50,61 @@ class Granja:
         print("="*80)
         
     def alimentar_personaje(self, nombre, cantidad):
-        """Alimenta a un personaje específico"""
+        """Alimenta a un personaje específico. Retorna mensaje string."""
         personaje = self.buscar_personaje(nombre)
         if personaje:
             mensaje = personaje.alimentar(cantidad)
             print(mensaje)
-            personaje.mostrar_estado()
-        else:
-            print(f"❌ No se encontró al personaje {nombre}")
+            return mensaje
+        msg = f"❌ No se encontró al personaje {nombre}"
+        print(msg)
+        return msg
             
     def dar_agua_personaje(self, nombre, cantidad):
-        """Da agua a un personaje específico"""
+        """Da agua a un personaje específico. Retorna mensaje string."""
         personaje = self.buscar_personaje(nombre)
         if personaje:
             mensaje = personaje.dar_agua(cantidad)
             print(mensaje)
-            personaje.mostrar_estado()
-        else:
-            print(f"❌ No se encontró al personaje {nombre}")
+            return mensaje
+        msg = f"❌ No se encontró al personaje {nombre}"
+        print(msg)
+        return msg
             
     def limpiar_personaje(self, nombre):
-        """Limpia a un personaje específico"""
+        """Limpia a un personaje específico. Retorna mensaje string."""
         personaje = self.buscar_personaje(nombre)
         if personaje:
             mensaje = personaje.limpiar()
             print(mensaje)
-            personaje.mostrar_estado()
-        else:
-            print(f"❌ No se encontró al personaje {nombre}")
+            return mensaje
+        msg = f"❌ No se encontró al personaje {nombre}"
+        print(msg)
+        return msg
             
     def recolectar_recursos_personaje(self, nombre):
-        """Recolecta los recursos de un personaje y los guarda en el almacén"""
+        """Recolecta los recursos de un personaje y los guarda en el almacén. Retorna mensaje string."""
         personaje = self.buscar_personaje(nombre)
         if personaje:
             recursos = personaje.recolectar_recursos()
             if recursos:
-                print(f"\n✅ Recursos recolectados de {nombre}:")
+                partes = [f"✅ Recursos recolectados de {nombre}:"]
                 for recurso, cantidad in recursos.items():
                     clave = (recurso, nombre)
                     self.almacen[clave] += cantidad
                     unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-                    print(f"   • {recurso.replace('_', ' ').title()}: {cantidad:.1f}{unidad}")
+                    line = f"   • {recurso.replace('_', ' ').title()}: {cantidad:.1f}{unidad}"
+                    print(line)
+                    partes.append(line)
                 print(f"\n📦 Los recursos han sido almacenados")
+                return "\n".join(partes) + "\n📦 Los recursos han sido almacenados"
             else:
-                print(f"❌ {nombre} no tiene recursos disponibles para recolectar")
-        else:
-            print(f"❌ No se encontró al personaje {nombre}")
+                msg = f"❌ {nombre} no tiene recursos disponibles para recolectar"
+                print(msg)
+                return msg
+        msg = f"❌ No se encontró al personaje {nombre}"
+        print(msg)
+        return msg
             
     def mostrar_almacen(self):
         """Muestra el contenido del almacén"""

@@ -107,20 +107,27 @@ class Tienda:
                 
         print("="*80)
         
-    def completar_encargo(self, id_encargo):
-        """Intenta completar un encargo"""
-        encargo = None
+    def buscar_encargo_por_id(self, id_encargo):
+        """Busca un encargo por su ID"""
         for e in self.encargos_disponibles:
             if e.id == id_encargo:
-                encargo = e
-                break
+                return e
+        return None
+
+    def completar_encargo(self, id_encargo, silent=False):
+        """Intenta completar un encargo. Si silent=True, no imprime y retorna string."""
+        encargo = self.buscar_encargo_por_id(id_encargo)
                 
         if not encargo:
-            print(f"❌ No se encontró el encargo #{id_encargo}")
+            msg = f"❌ No se encontró el encargo #{id_encargo}"
+            if silent:
+                return msg
+            print(msg)
             return False
             
         # Verificar si tenemos todos los recursos
-        print(f"\n🔍 Verificando recursos para el encargo #{id_encargo}...")
+        if not silent:
+            print(f"\n🔍 Verificando recursos para el encargo #{id_encargo}...")
         recursos_suficientes = True
         faltantes = []
         
@@ -134,6 +141,11 @@ class Tienda:
                 faltantes.append(f"{faltante:.1f}{unidad} de {recurso.replace('_', ' ')} {prop_texto}")
                 
         if not recursos_suficientes:
+            msg = "❌ No tienes suficientes recursos para completar este encargo\nTe faltan:\n"
+            for faltante in faltantes:
+                msg += f"   • {faltante}\n"
+            if silent:
+                return msg
             print(f"\n❌ No tienes suficientes recursos para completar este encargo")
             print(f"Te faltan:")
             for faltante in faltantes:
@@ -141,26 +153,33 @@ class Tienda:
             return False
             
         # Extraer recursos del almacén
-        print(f"\n📦 Extrayendo recursos del almacén...")
+        if not silent:
+            print(f"\n📦 Extrayendo recursos del almacén...")
         for (recurso, propietario), cantidad_necesaria in encargo.recursos_necesarios.items():
             extraido = self.granja.obtener_recurso_almacen(recurso, cantidad_necesaria, propietario)
             unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-            print(f"   ✅ {extraido:.1f}{unidad} de {recurso.replace('_', ' ')}")
+            if not silent:
+                print(f"   ✅ {extraido:.1f}{unidad} de {recurso.replace('_', ' ')}")
             
         # Completar encargo
         self.dinero += encargo.pago
         self.encargos_completados += 1
         self.encargos_disponibles.remove(encargo)
         
-        print(f"\n✨ ¡Encargo #{id_encargo} completado!")
-        print(f"💰 Has ganado ${encargo.pago}")
-        print(f"💰 Dinero total: ${self.dinero}")
+        msg = f"✨ ¡Encargo #{id_encargo} completado!\n💰 Has ganado ${encargo.pago}\n💰 Dinero total: ${self.dinero}"
         
         # Generar nuevo encargo
         if len(self.encargos_disponibles) < 3:
             self._generar_encargos_aleatorios(1)
-            print(f"📋 ¡Nuevo encargo disponible!")
+            msg += "\n📋 ¡Nuevo encargo disponible!"
             
+        if silent:
+            return msg
+        print(f"\n✨ ¡Encargo #{id_encargo} completado!")
+        print(f"💰 Has ganado ${encargo.pago}")
+        print(f"💰 Dinero total: ${self.dinero}")
+        if len(self.encargos_disponibles) < 3:
+            print(f"📋 ¡Nuevo encargo disponible!")
         return True
         
     def mostrar_menu(self):

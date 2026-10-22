@@ -3,16 +3,14 @@ Interfaz Gráfica del Simulador de Granja
 Reemplaza la interfaz de consola con una aplicación GUI moderna
 """
 
-import sys
-import os
 from tkinter import *
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox
+from collections import defaultdict
 
-# Importar los módulos del juego
 from granja import Granja
 from personaje import Personaje
 from tienda import Tienda
-from encargado import SistemaAutomatizacion
+from encargado import SistemaAutomatizacion, Encargado
 from guardado import SistemaGuardado, restaurar_desde_datos
 import constants as cfg
 
@@ -24,73 +22,53 @@ class SimuladorGranjaGUI:
         self.root.geometry("1200x800")
         self.root.minsize(1000, 700)
 
-        # Configurar el estilo
-        self.setup_styles()
-
-        # Inicializar el juego (similar a main.py)
-        self.inicializar_juego()
-
-        # Crear la interfaz
-        self.create_widgets()
-
-        # Actualizar la interfaz inicialmente
-        # self.actualizar_interfaz()
-
-    def setup_styles(self):
-        """Configura los estilos personalizados para la interfaz"""
-        self.style = ttk.Style()
-
-        # Usar un tema moderno si está disponible
-        try:
-            self.style.theme_use('clam')  # 'clam', 'alt', 'default', 'classic'
-        except:
-            pass  # Usar el tema predeterminado si 'clam' no está disponible
-
-        # Configurar colores personalizados (estilo anime-moderno)
         self.colors = {
-            'primary': '#FF6B6B',      # Rojo coral
-            'secondary': '#4ECDC4',    # Turquesa
-            'accent': '#45B7D1',       # Azul brillante
-            'warning': '#FFBE0B',      # Amarillo
-            'success': '#96CEB4',      # Verde pastel
-            'info': '#FECA57',         # Amarillo naranja
-            'dark': '#2C3E50',         # Azul oscuro
-            'light': '#ECF0F1',        # Gris muy claro
-            'bg_gradient_start': '#FF9A9E',  # Para degradados
-            'bg_gradient_end': '#FAD0C4',    # Para degradados
+            'primary': '#FF6B6B',
+            'secondary': '#4ECDC4',
+            'accent': '#45B7D1',
+            'warning': '#FFBE0B',
+            'success': '#96CEB4',
+            'info': '#FECA57',
+            'dark': '#2C3E50',
+            'light': '#ECF0F1',
+            'error': '#E74C3C',
+            'text_secondary': '#7F8C8D',
         }
 
-        # Configurar estilos personalizados
-        self.configure_custom_styles()
+        self.style = ttk.Style()
+        try:
+            self.style.theme_use('clam')
+        except Exception:
+            pass
+
+        self.selected_character = None
+        self.selected_order = None
+        self.selected_worker = None
+        self.selected_interaction_char = None
+
+        self.inicializar_juego()
+        self.create_widgets()
+        self.refresh_all()
+
+    # ── Inicialización del juego ──────────────────────────────────────────
 
     def inicializar_juego(self):
-        """Inicializa el juego (similar a la función main() de main.py)"""
-        # Sistema de guardado
         self.sistema_guardado = SistemaGuardado()
-
-        # Preguntar si quiere cargar partida
         self.resultado_carga = None
         self.mostrar_dialogo_carga()
-
-        # Si no se cargó ninguna partida, crear una nueva
         if self.resultado_carga is None or self.resultado_carga[0] != 'cargar':
             self.crear_nueva_partida()
 
     def mostrar_dialogo_carga(self):
-        """Muestra un diálogo para cargar partida o crear una nueva"""
         dialogo = Toplevel(self.root)
         dialogo.title("Cargar Partida")
         dialogo.geometry("400x200")
         dialogo.resizable(False, False)
         dialogo.transient(self.root)
         dialogo.grab_set()
+        dialogo.geometry("+%d+%d" % (self.root.winfo_rootx() + 50, self.root.winfo_rooty() + 50))
 
-        # Centrar el diálogo
-        dialogo.geometry("+%d+%d" % (self.root.winfo_rootx() + 50,
-                                   self.root.winfo_rooty() + 50))
-
-        Label(dialogo, text="¿Quieres cargar una partida guardada?",
-              font=('Arial', 12)).pack(pady=20)
+        Label(dialogo, text="¿Quieres cargar una partida guardada?", font=('Arial', 12)).pack(pady=20)
 
         button_frame = Frame(dialogo)
         button_frame.pack(pady=10)
@@ -108,21 +86,18 @@ class SimuladorGranjaGUI:
         self.root.wait_window(dialogo)
 
     def cargar_partida_dialogo(self, dialogo):
-        """Maneja la carga de partida desde el diálogo"""
         partidas = self.sistema_guardado.listar_partidas()
         if not partidas:
             messagebox.showinfo("Info", "No hay partidas guardadas")
             return
 
-        # Crear ventana para seleccionar partida
         select_dialog = Toplevel(dialogo)
         select_dialog.title("Seleccionar Partida")
         select_dialog.geometry("300x400")
         select_dialog.transient(dialogo)
         select_dialog.grab_set()
 
-        Label(select_dialog, text="Selecciona una partida:",
-              font=('Arial', 10)).pack(pady=10)
+        Label(select_dialog, text="Selecciona una partida:", font=('Arial', 10)).pack(pady=10)
 
         listbox = Listbox(select_dialog, font=('Arial', 9))
         listbox.pack(fill=BOTH, expand=True, padx=20, pady=10)
@@ -138,231 +113,70 @@ class SimuladorGranjaGUI:
                 select_dialog.destroy()
                 self.cargar_partida(nombre_partida)
 
-        Button(select_dialog, text="Cargar",
-               command=cargar_seleccionada,
+        Button(select_dialog, text="Cargar", command=cargar_seleccionada,
                bg=self.colors['success'], fg='white',
                font=('Arial', 10, 'bold')).pack(pady=10)
 
         self.root.wait_window(select_dialog)
 
     def cargar_partida(self, nombre_partida):
-        """Carga una partida específica"""
         datos, mensaje = self.sistema_guardado.cargar_partida(nombre_partida)
         if datos:
             self.granja, self.tienda, self.sistema_auto = restaurar_desde_datos(datos)
             self.resultado_carga = ('cargar', nombre_partida)
-            messagebox.showinfo("Éxito", mensaje)
+            messagebox.showinfo("Éxito", "✅ Partida cargada correctamente")
         else:
             messagebox.showerror("Error", mensaje)
             self.crear_nueva_partida()
 
     def nueva_partida_dialogo(self, dialogo):
-        """Maneja la creación de nueva partida desde el diálogo"""
         dialogo.destroy()
         self.crear_nueva_partida()
 
     def crear_nueva_partida(self):
-        """Crea una nueva partida desde cero"""
-        # Crear la granja
         self.granja = Granja()
-
-        # Crear personajes iniciales (usando los mismos de main.py para consistencia)
         personajes_iniciales = [
             Personaje("Amber", "Outrider", 18),
             Personaje("Barbara", "Diaconisa", 16),
             Personaje("Fischl", "Investigadora", 16),
         ]
-
         for p in personajes_iniciales:
             self.granja.agregar_personaje(p)
-
-        # Crear tienda
         self.tienda = Tienda(self.granja)
-
-        # Crear sistema de automatización
         self.sistema_auto = SistemaAutomatizacion(self.granja)
-
         self.resultado_carga = ('nueva', None)
-        messagebox.showinfo("Éxito", "✅ Nueva partida creada exitosamente!")
 
-    def inicializar_juego(self):
-        """Inicializa el juego (similar a la función main() de main.py)"""
-        # Sistema de guardado
-        self.sistema_guardado = SistemaGuardado()
-
-        # Preguntar si quiere cargar partida
-        self.resultado_carga = None
-        self.mostrar_dialogo_carga()
-
-        # Si no se cargó ninguna partida, crear una nueva
-        if self.resultado_carga is None or self.resultado_carga[0] != 'cargar':
-            self.crear_nueva_partida()
-
-    def mostrar_dialogo_carga(self):
-        """Muestra un diálogo para cargar partida o crear una nueva"""
-        dialogo = Toplevel(self.root)
-        dialogo.title("Cargar Partida")
-        dialogo.geometry("400x200")
-        dialogo.resizable(False, False)
-        dialogo.transient(self.root)
-        dialogo.grab_set()
-
-        # Centrar el diálogo
-        dialogo.geometry("+%d+%d" % (self.root.winfo_rootx() + 50,
-                                   self.root.winfo_rooty() + 50))
-
-        Label(dialogo, text="¿Quieres cargar una partida guardada?",
-              font=('Arial', 12)).pack(pady=20)
-
-        button_frame = Frame(dialogo)
-        button_frame.pack(pady=10)
-
-        Button(button_frame, text="Cargar Partida",
-               command=lambda: self.cargar_partida_dialogo(dialogo),
-               bg=self.colors['secondary'], fg='white',
-               font=('Arial', 10, 'bold'), padx=20).pack(side=LEFT, padx=10)
-
-        Button(button_frame, text="Nueva Partida",
-               command=lambda: self.nueva_partida_dialogo(dialogo),
-               bg=self.colors['primary'], fg='white',
-               font=('Arial', 10, 'bold'), padx=20).pack(side=LEFT, padx=10)
-
-        self.root.wait_window(dialogo)
-
-    def cargar_partida_dialogo(self, dialogo):
-        """Maneja la carga de partida desde el diálogo"""
-        partidas = self.sistema_guardado.listar_partidas()
-        if not partidas:
-            messagebox.showinfo("Info", "No hay partidas guardadas")
-            return
-
-        # Crear ventana para seleccionar partida
-        select_dialog = Toplevel(dialogo)
-        select_dialog.title("Seleccionar Partida")
-        select_dialog.geometry("300x400")
-        select_dialog.transient(dialogo)
-        select_dialog.grab_set()
-
-        Label(select_dialog, text="Selecciona una partida:",
-              font=('Arial', 10)).pack(pady=10)
-
-        listbox = Listbox(select_dialog, font=('Arial', 9))
-        listbox.pack(fill=BOTH, expand=True, padx=20, pady=10)
-
-        for partida in partidas:
-            listbox.insert(END, partida)
-
-        def cargar_seleccionada():
-            seleccion = listbox.curselection()
-            if seleccion:
-                nombre_partida = listbox.get(seleccion[0])
-                dialogo.destroy()
-                select_dialog.destroy()
-                self.cargar_partida(nombre_partida)
-
-        Button(select_dialog, text="Cargar",
-               command=cargar_seleccionada,
-               bg=self.colors['success'], fg='white',
-               font=('Arial', 10, 'bold')).pack(pady=10)
-
-        self.root.wait_window(select_dialog)
-
-    def cargar_partida(self, nombre_partida):
-        """Carga una partida específica"""
-        datos, mensaje = self.sistema_guardado.cargar_partida(nombre_partida)
-        if datos:
-            self.granja, self.tienda, self.sistema_auto = restaurar_desde_datos(datos)
-            self.resultado_carga = ('cargar', nombre_partida)
-            messagebox.showinfo("Éxito", mensaje)
-        else:
-            messagebox.showerror("Error", mensaje)
-            self.crear_nueva_partida()
-
-    def nueva_partida_dialogo(self, dialogo):
-        """Maneja la creación de nueva partida desde el diálogo"""
-        dialogo.destroy()
-        self.crear_nueva_partida()
-
-    def crear_nueva_partida(self):
-        """Crea una nueva partida desde cero"""
-        # Crear la granja
-        self.granja = Granja()
-
-        # Crear personajes iniciales (usando los mismos de main.py para consistencia)
-        personajes_iniciales = [
-            Personaje("Amber", "Outrider", 18),
-            Personaje("Barbara", "Diaconisa", 16),
-            Personaje("Fischl", "Investigadora", 16),
-        ]
-
-        for p in personajes_iniciales:
-            self.granja.agregar_personaje(p)
-
-        # Crear tienda
-        self.tienda = Tienda(self.granja)
-
-        # Crear sistema de automatización
-        self.sistema_auto = SistemaAutomatizacion(self.granja)
-
-        self.resultado_carga = ('nueva', None)
-        messagebox.showinfo("Éxito", "✅ Nueva partida creada exitosamente!")
-
-    def configure_custom_styles(self):
-        """Configura estilos personalizados para widgets ttk"""
-        # Estilo para etiquetas de título
-        self.style.configure('Title.TLabel',
-                           font=('Arial', 16, 'bold'),
-                           foreground=self.colors['dark'])
-
-        # Estilo para etiquetas de subtítulo
-        self.style.configure('Subtitle.TLabel',
-                           font=('Arial', 12, 'bold'),
-                           foreground=self.colors['primary'])
-
-        # Estilo para barras de progreso personalizadas
-        self.style.configure('Horizontal.TProgressbar',
-                           troughcolor=self.colors['light'],
-                           background=self.colors['primary'],
-                           thickness=20)
-
-        # Estilo para botones
-        self.style.configure('Custom.TButton',
-                           font=('Arial', 10, 'bold'),
-                           padding=10)
-
-        # Estilo para botones de acción
-        self.style.configure('Action.TButton',
-                           font=('Arial', 9, 'bold'),
-                           padding=5)
-
+    # ── Construcción de la interfaz ───────────────────────────────────────
 
     def create_widgets(self):
-        """Crea todos los widgets de la interfaz"""
-        # Frame principal
         main_frame = Frame(self.root)
         main_frame.pack(fill=BOTH, expand=True, padx=5, pady=5)
 
-        # Crear notebook (pestanas)
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=BOTH, expand=True)
 
-        # Crear las diferentes pestañas
         self.create_character_tab()
         self.create_storage_tab()
         self.create_store_tab()
         self.create_automation_tab()
         self.create_interactions_tab()
         self.create_controls_tab()
-
-        # Barra de estado
         self.create_status_bar()
 
+    def create_status_bar(self):
+        self.status_bar = Frame(self.root, relief=SUNKEN, bd=1)
+        self.status_bar.pack(fill=X, side=BOTTOM)
+        self.status_label = Label(self.status_bar, text="Listo", anchor=W)
+        self.status_label.pack(side=LEFT, padx=5)
+        self.status_time_label = Label(self.status_bar, text="", anchor=E)
+        self.status_time_label.pack(side=RIGHT, padx=5)
+
+    # ── Pestaña: Personajes ───────────────────────────────────────────────
+
     def create_character_tab(self):
-        """Crea la pestaña de gestión de personajes"""
         char_frame = Frame(self.notebook)
         self.notebook.add(char_frame, text="👥 Personajes")
 
-        # Panel izquierdo: lista de personajes
         left_panel = Frame(char_frame)
         left_panel.pack(side=LEFT, fill=Y, padx=(0, 5), pady=5)
 
@@ -372,188 +186,128 @@ class SimuladorGranjaGUI:
         self.character_listbox.pack(fill=Y, expand=True)
         self.character_listbox.bind('<<ListboxSelect>>', self.on_character_select)
 
-        # Botones para gestionar personajes
         char_buttons = Frame(left_panel)
         char_buttons.pack(fill=X, pady=10)
+        Button(char_buttons, text="Actualizar Lista", command=self.refresh_character_list,
+               bg=self.colors['info'], fg='white', font=('Arial', 9)).pack(fill=X, pady=2)
 
-        Button(char_buttons, text="Actualizar Lista",
-               command=self.refresh_character_list,
-               bg=self.colors['info'], fg='white',
-               font=('Arial', 9)).pack(fill=X, pady=2)
-
-        # Panel derecho: detalles del personaje seleccionado
         right_panel = Frame(char_frame)
         right_panel.pack(side=RIGHT, fill=BOTH, expand=True, padx=(5, 0), pady=5)
 
-        # Notebook para detalles del personaje
         self.char_details_notebook = ttk.Notebook(right_panel)
         self.char_details_notebook.pack(fill=BOTH, expand=True)
 
-        # Pestaña de estado
         self.create_character_status_tab()
-        # Pestaña de recursos
         self.create_character_resources_tab()
-        # Pestaña de acciones
         self.create_character_actions_tab()
 
     def create_character_status_tab(self):
-        """Crea la pestaña de estado del personaje"""
         status_frame = Frame(self.char_details_notebook)
         self.char_details_notebook.add(status_frame, text="📊 Estado")
 
-        # Barras de progreso para estadísticas
         stats_frame = LabelFrame(status_frame, text="Estadísticas", padx=10, pady=10)
         stats_frame.pack(fill=X, pady=10)
 
-        # Hambre
-        Label(stats_frame, text="Hambre:").grid(row=0, column=0, sticky=W, pady=2)
-        self.hunger_var = DoubleVar()
-        self.hunger_bar = ttk.Progressbar(stats_frame, variable=self.hunger_var,
-                                          maximum=100, length=200)
-        self.hunger_bar.grid(row=0, column=1, padx=5, pady=2)
-        self.hunger_label = Label(stats_frame, text="0%")
-        self.hunger_label.grid(row=0, column=2, padx=5, pady=2)
+        for i, (label_text, var_attr, bar_attr, lbl_attr) in enumerate([
+            ("Hambre:", "hunger_var", "hunger_bar", "hunger_label"),
+            ("Sed:", "thirst_var", "thirst_bar", "thirst_label"),
+            ("Higiene:", "hygiene_var", "hygiene_bar", "hygiene_label"),
+            ("Energía:", "energy_var", "energy_bar", "energy_label"),
+        ]):
+            Label(stats_frame, text=label_text).grid(row=i, column=0, sticky=W, pady=2)
+            setattr(self, var_attr, DoubleVar())
+            setattr(self, bar_attr, ttk.Progressbar(stats_frame, variable=getattr(self, var_attr), maximum=100, length=200))
+            getattr(self, bar_attr).grid(row=i, column=1, padx=5, pady=2)
+            setattr(self, lbl_attr, Label(stats_frame, text="0%"))
+            getattr(self, lbl_attr).grid(row=i, column=2, padx=5, pady=2)
 
-        # Sed
-        Label(stats_frame, text="Sed:").grid(row=1, column=0, sticky=W, pady=2)
-        self.thirst_var = DoubleVar()
-        self.thirst_bar = ttk.Progressbar(stats_frame, variable=self.thirst_var,
-                                          maximum=100, length=200)
-        self.thirst_bar.grid(row=1, column=1, padx=5, pady=2)
-        self.thirst_label = Label(stats_frame, text="0%")
-        self.thirst_label.grid(row=1, column=2, padx=5, pady=2)
-
-        # Higiene
-        Label(stats_frame, text="Higiene:").grid(row=2, column=0, sticky=W, pady=2)
-        self.hygiene_var = DoubleVar()
-        self.hygiene_bar = ttk.Progressbar(stats_frame, variable=self.hygiene_var,
-                                           maximum=100, length=200)
-        self.hygiene_bar.grid(row=2, column=1, padx=5, pady=2)
-        self.hygiene_label = Label(stats_frame, text="0%")
-        self.hygiene_label.grid(row=2, column=2, padx=5, pady=2)
-
-        # Energía
-        Label(stats_frame, text="Energía:").grid(row=3, column=0, sticky=W, pady=2)
-        self.energy_var = DoubleVar()
-        self.energy_bar = ttk.Progressbar(stats_frame, variable=self.energy_var,
-                                          maximum=100, length=200)
-        self.energy_bar.grid(row=3, column=1, padx=5, pady=2)
-        self.energy_label = Label(stats_frame, text="0%")
-        self.energy_label.grid(row=3, column=2, padx=5, pady=2)
-
-        # Información detallada
         info_frame = LabelFrame(status_frame, text="Información Detallada", padx=10, pady=10)
         info_frame.pack(fill=BOTH, expand=True, pady=10)
-
         self.char_info_text = Text(info_frame, height=8, width=40, font=('Courier', 9))
         self.char_info_text.pack(fill=BOTH, expand=True)
         self.char_info_text.config(state=DISABLED)
 
     def create_character_resources_tab(self):
-        """Crea la pestaña de recursos del personaje"""
         resources_frame = Frame(self.char_details_notebook)
         self.char_details_notebook.add(resources_frame, text="📦 Recursos")
 
-        # Lista de recursos disponibles
         Label(resources_frame, text="Recursos Disponibles para Recolectar:",
               font=('Arial', 10, 'bold')).pack(anchor=W, pady=(0, 5))
 
-        self.char_resources_text = Text(resources_frame, height=15, width=40,
-                                        font=('Courier', 9))
+        self.char_resources_text = Text(resources_frame, height=15, width=40, font=('Courier', 9))
         self.char_resources_text.pack(fill=BOTH, expand=True, padx=10, pady=5)
         self.char_resources_text.config(state=DISABLED)
 
-        # Botón de recolectar
         Button(resources_frame, text="Recolectar Todos los Recursos",
                command=self.collect_character_resources,
                bg=self.colors['success'], fg='white',
                font=('Arial', 10, 'bold')).pack(pady=10)
 
     def create_character_actions_tab(self):
-        """Crea la pestaña de acciones del personaje"""
         actions_frame = Frame(self.char_details_notebook)
         self.char_details_notebook.add(actions_frame, text="⚡ Acciones")
 
-        # Frame para botones de acciones básicas
         basic_actions = LabelFrame(actions_frame, text="Acciones Básicas", padx=10, pady=10)
         basic_actions.pack(fill=X, pady=5)
 
-        Button(basic_actions, text="Alimentar",
-               command=self.feed_character,
-               bg=self.colors['warning'], fg='white',
-               font=('Arial', 9)).pack(fill=X, pady=2)
+        Button(basic_actions, text="Alimentar", command=self.feed_character,
+               bg=self.colors['warning'], fg='white', font=('Arial', 9)).pack(fill=X, pady=2)
+        Button(basic_actions, text="Dar Agua", command=self.give_water_character,
+               bg=self.colors['accent'], fg='white', font=('Arial', 9)).pack(fill=X, pady=2)
+        Button(basic_actions, text="Limpiar", command=self.clean_character,
+               bg=self.colors['info'], fg='white', font=('Arial', 9)).pack(fill=X, pady=2)
 
-        Button(basic_actions, text="Dar Agua",
-               command=self.give_water_character,
-               bg=self.colors['accent'], fg='white',
-               font=('Arial', 9)).pack(fill=X, pady=2)
-
-        Button(basic_actions, text="Limpiar",
-               command=self.clean_character,
-               bg=self.colors['info'], fg='white',
-               font=('Arial', 9)).pack(fill=X, pady=2)
-
-        # Frame para interacciones especiales (se mostrarán botones dinámicos)
         self.special_actions_frame = LabelFrame(actions_frame, text="Interacciones Especiales",
-                                               padx=10, pady=10)
+                                                padx=10, pady=10)
         self.special_actions_frame.pack(fill=BOTH, expand=True, pady=5)
 
+    # ── Pestaña: Almacén ──────────────────────────────────────────────────
+
     def create_storage_tab(self):
-        """Crea la pestaña de almacenamiento"""
         storage_frame = Frame(self.notebook)
         self.notebook.add(storage_frame, text="📦 Almacén")
 
-        # Panel de control
         control_frame = Frame(storage_frame)
         control_frame.pack(fill=X, pady=5)
 
-        Button(control_frame, text="Actualizar Almacén",
-               command=self.refresh_storage_display,
-               bg=self.colors['info'], fg='white',
-               font=('Arial', 9)).pack(side=LEFT, padx=5)
+        Button(control_frame, text="Actualizar Almacén", command=self.refresh_storage_display,
+               bg=self.colors['info'], fg='white', font=('Arial', 9)).pack(side=LEFT, padx=5)
+        Button(control_frame, text="Vista Detallada", command=self.show_detailed_storage,
+               bg=self.colors['secondary'], fg='white', font=('Arial', 9)).pack(side=LEFT, padx=5)
 
-        Button(control_frame, text="Vista Detallada",
-               command=self.show_detailed_storage,
-               bg=self.colors['secondary'], fg='white',
-               font=('Arial', 9)).pack(side=LEFT, padx=5)
-
-        # Área de visualización del almacen
         storage_container = Frame(storage_frame)
         storage_container.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
-        # Scrollbar para el almacen
         storage_scroll = Scrollbar(storage_container)
         storage_scroll.pack(side=RIGHT, fill=Y)
 
         self.storage_text = Text(storage_container, yscrollcommand=storage_scroll.set,
-                                font=('Courier', 10), wrap=NONE)
+                                 font=('Courier', 10), wrap=WORD)
         self.storage_text.pack(fill=BOTH, expand=True)
         storage_scroll.config(command=self.storage_text.yview)
 
+    # ── Pestaña: Tienda ───────────────────────────────────────────────────
+
     def create_store_tab(self):
-        """Crea la pestaña de la tienda"""
         store_frame = Frame(self.notebook)
         self.notebook.add(store_frame, text="🏪 Tienda")
 
-        # Panel superior: información de la tienda
         info_frame = Frame(store_frame)
         info_frame.pack(fill=X, pady=5)
 
-        Label(info_frame, text="Dinero Disponible:", font=('Arial', 10, 'bold')).pack(side=LEFT)
+        Label(info_frame, text="Dinero:", font=('Arial', 10, 'bold')).pack(side=LEFT)
         self.store_money_label = Label(info_frame, text="$0", font=('Arial', 10, 'bold'),
-                                      fg=self.colors['warning'])
+                                       fg=self.colors['warning'])
         self.store_money_label.pack(side=LEFT, padx=10)
 
-        Label(info_frame, text="Encargos Completados:", font=('Arial', 10, 'bold')).pack(side=LEFT, padx=(20, 0))
+        Label(info_frame, text="Completados:", font=('Arial', 10, 'bold')).pack(side=LEFT, padx=(20, 0))
         self.store_completed_label = Label(info_frame, text="0", font=('Arial', 10, 'bold'),
-                                          fg=self.colors['success'])
+                                           fg=self.colors['success'])
         self.store_completed_label.pack(side=LEFT, padx=5)
 
-        # Panel de encargos
         orders_frame = LabelFrame(store_frame, text="Encargos Disponibles", padx=10, pady=10)
         orders_frame.pack(fill=BOTH, expand=True, padx=10, pady=5)
 
-        # Lista de encargos con scrollbar
         orders_container = Frame(orders_frame)
         orders_container.pack(fill=BOTH, expand=True)
 
@@ -561,59 +315,47 @@ class SimuladorGranjaGUI:
         orders_scroll.pack(side=RIGHT, fill=Y)
 
         self.orders_listbox = Listbox(orders_container, yscrollcommand=orders_scroll.set,
-                                     font=('Courier', 9), selectmode=SINGLE)
+                                      font=('Courier', 9), selectmode=SINGLE)
         self.orders_listbox.pack(fill=BOTH, expand=True)
         orders_scroll.config(command=self.orders_listbox.yview)
-
         self.orders_listbox.bind('<<ListboxSelect>>', self.on_order_select)
 
-        # Botones de acción para encargos
         order_buttons = Frame(orders_frame)
         order_buttons.pack(fill=X, pady=5)
 
-        Button(order_buttons, text="Actualizar Encargos",
-               command=self.refresh_store_display,
-               bg=self.colors['info'], fg='white',
-               font=('Arial', 9)).pack(side=LEFT, padx=5)
+        Button(order_buttons, text="Actualizar Encargos", command=self.refresh_store_display,
+               bg=self.colors['info'], fg='white', font=('Arial', 9)).pack(side=LEFT, padx=5)
 
         self.complete_order_button = Button(order_buttons, text="Completar Encargo Seleccionado",
-                                           command=self.complete_selected_order,
-                                           bg=self.colors['success'], fg='white',
-                                           font=('Arial', 9, 'bold'))
+                                            command=self.complete_selected_order,
+                                            bg=self.colors['success'], fg='white',
+                                            font=('Arial', 9, 'bold'))
         self.complete_order_button.pack(side=LEFT, padx=5)
         self.complete_order_button.config(state=DISABLED)
 
-        # Panel de información del encargo seleccionado
         order_info_frame = LabelFrame(store_frame, text="Información del Encargo", padx=10, pady=10)
         order_info_frame.pack(fill=X, padx=10, pady=5)
 
-        self.order_info_text = Text(order_info_frame, height=4, width=60,
-                                   font=('Courier', 9))
+        self.order_info_text = Text(order_info_frame, height=6, width=60, font=('Courier', 9))
         self.order_info_text.pack(fill=X)
         self.order_info_text.config(state=DISABLED)
 
+    # ── Pestaña: Automatización ───────────────────────────────────────────
+
     def create_automation_tab(self):
-        """Crea la pestaña de automatización"""
         auto_frame = Frame(self.notebook)
         self.notebook.add(auto_frame, text="🤖 Automatización")
 
-        # Panel superior: lista de encargados
         top_frame = Frame(auto_frame)
         top_frame.pack(fill=X, pady=5)
 
         Label(top_frame, text="Encargados/Máquinas:", font=('Arial', 10, 'bold')).pack(side=LEFT)
 
-        Button(top_frame, text="Crear Nuevo Encargado",
-               command=self.create_new_worker_dialog,
-               bg=self.colors['primary'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=10)
+        Button(top_frame, text="Crear Nuevo Encargado", command=self.create_new_worker_dialog,
+               bg=self.colors['primary'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=10)
+        Button(top_frame, text="Actualizar Lista", command=self.refresh_worker_list,
+               bg=self.colors['info'], fg='white', font=('Arial', 9)).pack(side=LEFT, padx=5)
 
-        Button(top_frame, text="Actualizar Lista",
-               command=self.refresh_worker_list,
-               bg=self.colors['info'], fg='white',
-               font=('Arial', 9)).pack(side=LEFT, padx=5)
-
-        # Lista de encargados
         workers_frame = LabelFrame(auto_frame, text="Encargados Activos", padx=10, pady=10)
         workers_frame.pack(fill=BOTH, expand=True, padx=10, pady=5)
 
@@ -624,51 +366,54 @@ class SimuladorGranjaGUI:
         workers_scroll.pack(side=RIGHT, fill=Y)
 
         self.workers_listbox = Listbox(workers_container, yscrollcommand=workers_scroll.set,
-                                      font=('Courier', 9), selectmode=SINGLE)
+                                       font=('Courier', 9), selectmode=SINGLE)
         self.workers_listbox.pack(fill=BOTH, expand=True)
         workers_scroll.config(command=self.workers_listbox.yview)
-
         self.workers_listbox.bind('<<ListboxSelect>>', self.on_worker_select)
 
-        # Panel de detalles del encargado seleccionado
         worker_details_frame = LabelFrame(auto_frame, text="Detalles del Encargado", padx=10, pady=10)
         worker_details_frame.pack(fill=X, padx=10, pady=5)
 
-        self.worker_info_text = Text(worker_details_frame, height=6, width=60,
-                                    font=('Courier', 9))
+        self.worker_info_text = Text(worker_details_frame, height=6, width=60, font=('Courier', 9))
         self.worker_info_text.pack(fill=BOTH, expand=True)
         self.worker_info_text.config(state=DISABLED)
 
-        # Panel de programación de tareas
+        worker_action_buttons = Frame(auto_frame)
+        worker_action_buttons.pack(fill=X, padx=10, pady=5)
+        self.toggle_worker_btn = Button(worker_action_buttons, text="Activar/Desactivar",
+                                        command=self.toggle_worker, state=DISABLED,
+                                        bg=self.colors['info'], fg='white', font=('Arial', 9))
+        self.toggle_worker_btn.pack(side=LEFT, padx=5)
+        self.clear_tasks_btn = Button(worker_action_buttons, text="Limpiar Tareas",
+                                      command=self.clear_all_tasks, state=DISABLED,
+                                      bg=self.colors['warning'], fg='white', font=('Arial', 9))
+        self.clear_tasks_btn.pack(side=LEFT, padx=5)
+
         task_frame = LabelFrame(auto_frame, text="Programar Tarea", padx=10, pady=10)
         task_frame.pack(fill=X, padx=10, pady=5)
 
-        # Selección de personaje
         Label(task_frame, text="Personaje:").grid(row=0, column=0, sticky=W, pady=2)
         self.task_character_var = StringVar()
         self.task_character_combo = ttk.Combobox(task_frame, textvariable=self.task_character_var,
-                                                state="readonly", width=15)
+                                                 state="readonly", width=15)
         self.task_character_combo.grid(row=0, column=1, padx=5, pady=2, sticky=W)
 
-        # Selección de acción
         Label(task_frame, text="Acción:").grid(row=0, column=2, sticky=W, padx=(10, 0), pady=2)
         self.task_action_var = StringVar()
         self.task_action_combo = ttk.Combobox(task_frame, textvariable=self.task_action_var,
-                                             values=["Recolectar", "Alimentar", "Dar Agua", "Limpiar"],
-                                             state="readonly", width=12)
+                                              values=["recolectar", "alimentar", "dar_agua", "limpiar"],
+                                              state="readonly", width=12)
         self.task_action_combo.grid(row=0, column=3, padx=5, pady=2, sticky=W)
-        self.task_action_combo.bind('<<ComboboxSelected>>', self.on_task_action_change)
 
-        # Parámetros (dinámicos según la acción seleccionada)
-        self.task_params_frame = Frame(task_frame)
-        self.task_params_frame.grid(row=1, column=0, columnspan=4, sticky=EW, padx=5, pady=5)
+        Label(task_frame, text="Cantidad (g/ml):").grid(row=1, column=0, sticky=W, pady=2)
+        self.task_cantidad_entry = Entry(task_frame, width=10)
+        self.task_cantidad_entry.grid(row=1, column=1, padx=5, pady=2, sticky=W)
+        self.task_cantidad_entry.insert(0, "400")
 
-        Button(task_frame, text="Programar Tarea",
-               command=self.schedule_task,
-               bg=self.colors['warning'], fg='white',
-               font=('Arial', 9, 'bold')).grid(row=2, column=0, columnspan=4, pady=10)
+        Button(task_frame, text="Programar Tarea", command=self.schedule_task,
+               bg=self.colors['warning'], fg='white', font=('Arial', 9, 'bold')).grid(
+               row=2, column=0, columnspan=4, pady=10)
 
-        # Panel de tareas programadas
         scheduled_frame = LabelFrame(auto_frame, text="Tareas Programadas", padx=10, pady=10)
         scheduled_frame.pack(fill=BOTH, expand=True, padx=10, pady=5)
 
@@ -679,524 +424,123 @@ class SimuladorGranjaGUI:
         scheduled_scroll.pack(side=RIGHT, fill=Y)
 
         self.scheduled_tasks_text = Text(scheduled_container, yscrollcommand=scheduled_scroll.set,
-                                        font=('Courier', 9), height=8)
+                                         font=('Courier', 9), height=8)
         self.scheduled_tasks_text.pack(fill=BOTH, expand=True)
         scheduled_scroll.config(command=self.scheduled_tasks_text.yview)
 
-        # Botones para tareas programadas
         task_buttons = Frame(auto_frame)
         task_buttons.pack(fill=X, pady=5)
 
-        Button(task_buttons, text="Ejecutar Automatización Ahora",
-               command=self.execute_automation_now,
-               bg=self.colors['primary'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(task_buttons, text="Ejecutar Automatización Ahora", command=self.execute_automation_now,
+               bg=self.colors['primary'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
 
-        Button(task_buttons, text="Limpiar Todas las Tareas",
-               command=self.clear_all_tasks,
-               bg=self.colors['warning'], fg='white',
-               font=('Arial', 9)).pack(side=LEFT, padx=5)
+    # ── Pestaña: Interacciones ────────────────────────────────────────────
 
     def create_interactions_tab(self):
-        """Crea la pestaña de interacciones especiales"""
         interactions_frame = Frame(self.notebook)
         self.notebook.add(interactions_frame, text="🔞 Interacciones")
 
-        # Información
-        info_label = Label(interactions_frame,
-                          text="Interacciones especiales que generan recursos adicionales\n" +
-                               "pero reducen la higiene del personaje",
-                          font=('Arial', 10, 'italic'),
-                          fg=self.colors['dark'])
-        info_label.pack(pady=10)
+        Label(interactions_frame,
+              text="Interacciones especiales que generan recursos adicionales\npero reducen la higiene del personaje",
+              font=('Arial', 10, 'italic'), fg=self.colors['dark']).pack(pady=10)
 
-        # Selección de personaje para interacción
-        char_select_frame = LabelFrame(interactions_frame, text="Seleccionar Personaje",
-                                      padx=10, pady=10)
+        char_select_frame = LabelFrame(interactions_frame, text="Seleccionar Personaje", padx=10, pady=10)
         char_select_frame.pack(fill=X, padx=10, pady=5)
 
         Label(char_select_frame, text="Personaje:").pack(side=LEFT)
         self.interaction_char_var = StringVar()
         self.interaction_char_combo = ttk.Combobox(char_select_frame,
-                                                  textvariable=self.interaction_char_var,
-                                                  state="readonly", width=20)
+                                                   textvariable=self.interaction_char_var,
+                                                   state="readonly", width=20)
         self.interaction_char_combo.pack(side=LEFT, padx=5)
         self.interaction_char_combo.bind('<<ComboboxSelected>>', self.on_interaction_char_select)
 
-        # Panel de interacciones disponibles (se actualizará dinámicamente)
-        self.interactions_panel = Frame(interactions_frame)
-        self.interactions_panel.pack(fill=BOTH, expand=True, padx=10, pady=10)
+        interactions_buttons = Frame(interactions_frame)
+        interactions_buttons.pack(fill=X, padx=10, pady=10)
 
-        # Área de resultados de interacciones
-        results_frame = LabelFrame(interactions_frame, text="Resultados de Interacciones",
-                                  padx=10, pady=10)
-        results_frame.pack(fill=BOTH, padx=10, pady=5)
+        for text, cmd in [
+            ("Lamer", self.interaction_lamer),
+            ("Tocar/Acariciar", self.interaction_tocar),
+            ("Penetrar", self.interaction_penetrar),
+            ("Insertar Objeto", self.interaction_insertar_objeto),
+            ("Poner Boca en", self.interaction_boca),
+        ]:
+            Button(interactions_buttons, text=text, command=cmd,
+                   bg=self.colors['warning'], fg='white', font=('Arial', 9)).pack(side=LEFT, padx=5)
 
-        self.interaction_results_text = Text(results_frame, height=8, width=60,
-                                            font=('Courier', 9))
+        results_frame = LabelFrame(interactions_frame, text="Resultados de Interacciones", padx=10, pady=10)
+        results_frame.pack(fill=BOTH, expand=True, padx=10, pady=5)
+
+        self.interaction_results_text = Text(results_frame, height=10, width=60, font=('Courier', 9))
         self.interaction_results_text.pack(fill=BOTH, expand=True)
         self.interaction_results_text.config(state=DISABLED)
 
+    # ── Pestaña: Controles ────────────────────────────────────────────────
+
     def create_controls_tab(self):
-        """Crea la pestaña de controles del juego"""
         controls_frame = Frame(self.notebook)
         self.notebook.add(controls_frame, text="🎮 Controles")
 
-        # Información del juego
-        game_info_frame = LabelFrame(controls_frame, text="Información del Juego",
-                                    padx=10, pady=10)
+        game_info_frame = LabelFrame(controls_frame, text="Información del Juego", padx=10, pady=10)
         game_info_frame.pack(fill=X, padx=10, pady=5)
 
-        self.game_time_label = Label(game_info_frame, text="Hora: 08:00",
-                                    font=('Arial', 10, 'bold'))
+        self.game_time_label = Label(game_info_frame, text="Hora: 08:00 AM", font=('Arial', 10, 'bold'))
         self.game_time_label.pack(anchor=W)
 
-        self.game_day_label = Label(game_info_frame, text="Día: 1",
-                                   font=('Arial', 10, 'bold'))
-        self.game_day_label.pack(anchor=W, pady=(0, 5))
-
-        # Controles de tiempo
-        time_controls = LabelFrame(controls_frame, text="Controles de Tiempo",
-                                  padx=10, pady=10)
+        time_controls = LabelFrame(controls_frame, text="Controles de Tiempo", padx=10, pady=10)
         time_controls.pack(fill=X, padx=10, pady=5)
 
-        Button(time_controls, text="Avanzar 1 Hora",
-               command=self.advance_one_hour,
-               bg=self.colors['accent'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(time_controls, text="Avanzar 1 Hora", command=self.advance_one_hour,
+               bg=self.colors['accent'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(time_controls, text="Avanzar 3 Horas", command=self.advance_three_hours,
+               bg=self.colors['accent'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(time_controls, text="Avanzar 6 Horas", command=self.advance_six_hours,
+               bg=self.colors['accent'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
 
-        Button(time_controls, text="Avanzar 3 Horas",
-               command=self.advance_three_hours,
-               bg=self.colors['accent'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
-
-        Button(time_controls, text="Avanzar 6 Horas",
-               command=self.advance_six_hours,
-               bg=self.colors['accent'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
-
-        # Guardado y carga
-        save_frame = LabelFrame(controls_frame, text="Guardado y Carga",
-                               padx=10, pady=10)
+        save_frame = LabelFrame(controls_frame, text="Guardado y Carga", padx=10, pady=10)
         save_frame.pack(fill=X, padx=10, pady=5)
 
-        Button(save_frame, text="Guardar Partida",
-               command=self.save_game_dialog,
-               bg=self.colors['success'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(save_frame, text="Guardar Partida", command=self.save_game_dialog,
+               bg=self.colors['success'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(save_frame, text="Cargar Partida", command=self.load_game_dialog,
+               bg=self.colors['primary'], fg='white', font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+        Button(save_frame, text="Ver Partidas Guardadas", command=self.list_saved_games,
+               bg=self.colors['info'], fg='white', font=('Arial', 9)).pack(side=LEFT, padx=5)
 
-        Button(save_frame, text="Cargar Partida",
-               command=self.load_game_dialog,
-               bg=self.colors['primary'], fg='white',
-               font=('Arial', 9, 'bold')).pack(side=LEFT, padx=5)
+    # ── Actualización general ─────────────────────────────────────────────
 
-        Button(save_frame, text="Ver Partidas Guardadas",
-               command=self.list_saved_games,
-               bg=self.colors['info'], fg='white',
-               font=('Arial', 9)).pack(side=LEFT, padx=5)
-
-    def create_status_bar(self):
-        """Crea la barra de estado en la parte inferior"""
-        self.status_bar = Frame(self.root, relief=SUNKEN, bd=1)
-        self.status_bar.pack(fill=X, side=BOTTOM)
-
-        self.status_label = Label(self.status_bar, text="Listo", anchor=W)
-        self.status_label.pack(side=LEFT, padx=5)
-
-        self.status_time_label = Label(self.status_bar, text="", anchor=E)
-        self.status_time_label.pack(side=RIGHT, padx=5)
-
-    # Métodos de actualización y manejo de eventos para almacenamiento
-    def refresh_storage_display(self):
-        """Actualiza la visualización del almacenamiento"""
-        # Limpiar treeview
-        for item in self.storage_tree.get_children():
-            self.storage_tree.delete(item)
-        
-        # Organizar recursos por tipo
-        recursos_por_tipo = defaultdict(float)
-        recursos_por_propietario = defaultdict(lambda: defaultdict(float))
-        
-        for (recurso, propietario), cantidad in self.granja.almacen.items():
-            recursos_por_tipo[recurso] += cantidad
-            recursos_por_propietario[propietario][recurso] += cantidad
-        
-        # Insertar recursos por tipo
-        for recurso in sorted(recursos_por_tipo.keys()):
-            cantidad = recursos_por_tipo[recurso]
-            unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-            self.storage_tree.insert("", "end", values=(recurso.replace('_', ' ').title(), f"{cantidad:.1f}{unidad}"))
-        
-        # Actualizar texto detallado
-        self.update_detailed_storage()
-
-    def show_detailed_storage(self):
-        """Muestra una ventana detallada del almacenamiento"""
-        dialogo = Toplevel(self.root)
-        dialogo.title("Almacén Detallado")
-        dialogo.geometry("600x400")
-        dialogo.transient(self.root)
-        
-        # Frame principal
-        main_frame = Frame(dialogo)
-        main_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-        
-        # Treeview con scrollbar
-        tree_frame = Frame(main_frame)
-        tree_frame.pack(fill=BOTH, expand=True)
-        
-        tree_scroll = Scrollbar(tree_frame)
-        tree_scroll.pack(side=RIGHT, fill=Y)
-        
-        detailed_tree = Treeview(tree_frame, yscrollcommand=tree_scroll.set, selectmode="browse")
-        detailed_tree.pack(fill=BOTH, expand=True)
-        tree_scroll.config(command=detailed_tree.yview)
-        
-        # Configurar columnas
-        detailed_tree["columns"] = ("propietario", "recurso", "cantidad", "unidad")
-        detailed_tree.column("#0", width=0, stretch=NO)
-        detailed_tree.column("propietario", width=150)
-        detailed_tree.column("recurso", width=150)
-        detailed_tree.column("cantidad", width=100)
-        detailed_tree.column("unidad", width=80)
-        
-        detailed_tree.heading("propietario", text="Propietario")
-        detailed_tree.heading("recurso", text="Recurso")
-        detailed_tree.heading("cantidad", text="Cantidad")
-        detailed_tree.heading("unidad", text="Unidad")
-        
-        # Llenar con datos
-        for (recurso, propietario), cantidad in self.granja.almacen.items():
-            if cantidad > 0:
-                unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-                detailed_tree.insert("", "end", values=(propietario, recurso.replace('_', ' ').title(), f"{cantidad:.1f}", unidad))
-        
-        # Botón cerrar
-        Button(main_frame, text="Cerrar", command=dialogo.destroy,
-               bg=self.colors['warning'], fg='white').pack(pady=10)
-
-    def update_detailed_storage(self):
-        """Actualiza el texto detallado del almacenamiento"""
-        self.storage_details_text.config(state=NORMAL)
-        self.storage_details_text.delete(1.0, END)
-        
-        if not self.granja.almacen:
-            self.storage_details_text.insert(END, "El almacén está vacío\n")
-        else:
-            # Organizar por recurso
-            recursos_por_tipo = defaultdict(list)
-            for (recurso, propietario), cantidad in self.granja.almacen.items():
-                if cantidad > 0:
-                    recursos_por_tipo[recurso].append((propietario, cantidad))
-            
-            total_general = 0
-            for recurso in sorted(recursos_por_tipo.keys()):
-                unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-                self.storage_details_text.insert(END, f"\n{recurso.replace('_', ' ').title()}:\n")
-                total_recurso = 0
-                for propietario, cantidad in recursos_por_tipo[recurso]:
-                    self.storage_details_text.insert(END, f"  • De {propietario}: {cantidad:.1f}{unidad}\n")
-                    total_recurso += cantidad
-                self.storage_details_text.insert(END, f"  ➡️ Total: {total_recurso:.1f}{unidad}\n")
-                total_general += total_recurso
-            
-            self.storage_details_text.insert(END, f"\n{'='*40}\n")
-            self.storage_details_text.insert(END, f"TOTAL GENERAL: {total_general:.1f} unidades\n")
-        
-        self.storage_details_text.config(state=DISABLED)
-
-    # Métodos de actualización y manejo de eventos para la tienda
-    def refresh_store_display(self):
-        """Actualiza la visualización de los encargos disponibles"""
-        # Limpiar treeview
-        for item in self.store_tree.get_children():
-            self.store_tree.delete(item)
-        
-        # Insertar encargos
-        for encargo in self.tienda.encargos_disponibles:
-            # Formatear recursos necesarios
-            recursos_str = []
-            for (recurso, propietario), cantidad in encargo.recursos_necesarios.items():
-                propietario_str = f" de {propietario}" if propietario else ""
-                unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-                recursos_str.append(f"{cantidad:.1f}{unidad} {recurso.replace('_', ' ')}{propietario_str}")
-            
-            recursos_texto = ", ".join(recursos_str) if recursos_str else "Ninguno"
-            
-            self.store_tree.insert("", "end", values=(
-                encargo.id,
-                encargo.descripcion,
-                recursos_texto,
-                f"${encargo.pago:.2f}",
-                encargo.cliente
-            ))
-
-    def on_order_select(self, event):
-        """Maneja la selección de un encargo en la lista"""
-        selection = self.store_tree.selection()
-        if selection:
-            item = self.store_tree.item(selection[0])
-            encargo_id = int(item['values'][0])
-            self.selected_order = self.tienda.buscar_encargo_por_id(encargo_id)
-            self.update_order_details()
-
-    def update_order_details(self):
-        """Actualiza la visualización de los detalles del encargo seleccionado"""
-        if not hasattr(self, 'selected_order') or not self.selected_order:
-            return
-
-        encargo = self.selected_order
-
-        # Actualizar texto informativo
-        self.order_details_text.config(state=NORMAL)
-        self.order_details_text.delete(1.0, END)
-        self.order_details_text.insert(END, f"ID: {encargo.id}\n")
-        self.order_details_text.insert(END, f"Descripción: {encargo.descripcion}\n")
-        self.order_details_text.insert(END, f"Cliente: {encargo.cliente}\n")
-        self.order_details_text.insert(END, f"Pago: ${encargo.pago:.2f}\n\n")
-        self.order_details_text.insert(END, "Recursos necesarios:\n")
-        
-        for (recurso, propietario), cantidad in encargo.recursos_necesarios.items():
-            propietario_str = f" (de {propietario})" if propietario else ""
-            unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-            self.order_details_text.insert(END, f"  • {cantidad:.1f}{unidad} {recurso.replace('_', ' ')}{propietario_str}\n")
-        
-        self.order_details_text.config(state=DISABLED)
-
-        # Verificar si podemos completar el encargo
-        self.check_order_completion()
-
-    def check_order_completion(self):
-        """Verifica si el encargo seleccionado puede completarse y actualiza el estado del botón"""
-        if not hasattr(self, 'selected_order') or not self.selected_order:
-            self.complete_order_btn.config(state=DISABLED)
-            self.order_status_label.config(text="Selecciona un encargo", fg=self.colors['text_secondary'])
-            return
-
-        encargo = self.selected_order
-        puede_completar = True
-        faltantes = []
-
-        for (recurso, propietario), cantidad_necesaria in encargo.recursos_necesarios.items():
-            cantidad_disponible = self.granja.obtener_cantidad_total_recurso(recurso, propietario)
-            if cantidad_disponible < cantidad_necesaria:
-                puede_completar = False
-                faltantes.append(f"{recurso.replace('_', ' ')}: {cantidad_necesaria - cantidad_disponible:.1f} faltantes")
-
-        if puede_completar:
-            self.complete_order_btn.config(state=NORMAL)
-            self.order_status_label.config(text="¡Listo para completar!", fg=self.colors['success'])
-        else:
-            self.complete_order_btn.config(state=DISABLED)
-            status_text = "Faltan: " + ", ".join(faltantes)
-            self.order_status_label.config(text=status_text, fg=self.colors['error'])
-
-    def complete_selected_order(self):
-        """Maneja la acción de completar el encargo seleccionado"""
-        if not hasattr(self, 'selected_order') or not self.selected_order:
-            messagebox.showwarning("Advertencia", "Selecciona un encargo primero")
-            return
-
-        if not messagebox.askyesno("Confirmar", "¿Completar este encargo?"):
-            return
-
-        resultado = self.tienda.completar_encargo(self.selected_order.id, self.granja)
-        messagebox.showinfo("Resultado", resultado)
-        
-        # Actualizar displays
+    def refresh_all(self):
+        self.refresh_character_list()
+        self.refresh_storage_display()
         self.refresh_store_display()
-        self.refresh_storage_display()
-        self.update_money_display()
-        
-        # Limpiar selección
-        self.selected_order = None
-        self.order_details_text.config(state=NORMAL)
-        self.order_details_text.delete(1.0, END)
-        self.order_details_text.config(state=DISABLED)
-        self.order_status_label.config(text="Selecciona un encargo", fg=self.colors['text_secondary'])
+        self.refresh_worker_list()
+        self.update_time_display()
+        self.populate_character_combos()
 
-    def update_money_display(self):
-        """Actualiza la visualización del dinero"""
-        self.money_label.config(text=f"Dinero: ${self.tienda.dinero:.2f}")
+    def populate_character_combos(self):
+        nombres = [p.nombre for p in self.granja.personajes]
+        self.task_character_combo['values'] = nombres
+        self.interaction_char_combo['values'] = nombres
 
-    # Métodos de actualización y manejo de eventos para automatización
-    def refresh_worker_list(self):
-        """Actualiza la lista de encargados en el listbox"""
-        self.worker_listbox.delete(0, END)
-        for encargado in self.sistema_auto.encargados:
-            estado = "🟢 Activo" if encargado.activo else "🔴 Inactivo"
-            self.worker_listbox.insert(END, f"{encargado.nombre} ({encargado.tipo}) - {estado}")
-
-    def on_worker_select(self, event):
-        """Maneja la selección de un encargado en la lista"""
-        selection = self.worker_listbox.curselection()
-        if selection:
-            trabajador_nombre = self.worker_listbox.get(selection[0]).split(" (")[0]
-            self.selected_worker = self.sistema_auto.buscar_encargado(trabajador_nombre)
-            self.update_worker_display()
-
-    def update_worker_display(self):
-        """Actualiza la visualización de los detalles del encargado seleccionado"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
-            return
-
-        encargado = self.selected_worker
-
-        # Actualizar estado
-        estado = "Activo" if encargado.activo else "Inactivo"
-        color_estado = self.colors['success'] if encargado.activo else self.colors['error']
-        self.worker_status_label.config(text=f"Estado: {estado}", fg=color_estado)
-
-        # Actualizar tareas programadas
-        self.worker_tasks_text.config(state=NORMAL)
-        self.worker_tasks_text.delete(1.0, END)
-        
-        if not encargado.tareas_programadas:
-            self.worker_tasks_text.insert(END, "No hay tareas programadas\n")
-        else:
-            for i, tarea in enumerate(encargado.tareas_programadas, 1):
-                accion_texto = tarea['accion'].replace('_', ' ').title()
-                cantidad_str = f"{tarea['cantidad']}{'g' if tarea['accion'] in ['alimentar', 'limpiar'] else 'ml' if tarea['accion'] in ['dar_agua'] else ''}"
-                hora_str = f"{tarea['hora']:02d}:00"
-                self.worker_tasks_text.insert(END, f"{i}. [{hora_str}] {accion_texto} - {cantidad_str}\n")
-        
-        self.worker_tasks_text.config(state=DISABLED)
-
-        # Habilitar/deshabilitar botones según estado
-        if encargado.activo:
-            self.toggle_worker_btn.config(text="Desactivar")
-            self.execute_now_btn.config(state=NORMAL)
-        else:
-            self.toggle_worker_btn.config(text="Activar")
-            self.execute_now_btn.config(state=DISABLED)
-
-    def create_new_worker_dialog(self):
-        """Muestra el diálogo para crear un nuevo encargado"""
-        dialogo = Toplevel(self.root)
-        dialogo.title("Crear Nuevo Encargado")
-        dialogo.geometry("350x250")
-        dialogo.resizable(False, False)
-        dialogo.transient(self.root)
-        dialogo.grab_set()
-
-        Label(dialogo, text="Crear Nuevo Encargado", font=('Arial', 12, 'bold')).pack(pady=10)
-
-        # Nombre
-        Frame(dialogo).pack(pady=2)
-        Label(dialogo, text="Nombre:").pack(anchor=W, padx=20)
-        nombre_entry = Entry(dialogo, width=25)
-        nombre_entry.pack(padx=20, pady=2)
-        nombre_entry.insert(0, "Encargado")
-
-        # Tipo
-        Frame(dialogo).pack(pady=2)
-        Label(dialogo, text="Tipo:").pack(anchor=W, padx=20)
-        tipo_var = StringVar(value="humano")
-        tipo_frame = Frame(dialogo)
-        tipo_frame.pack(anchor=W, padx=20, pady=2)
-        Radiobutton(tipo_frame, text="Humano", variable=tipo_var, value="humano").pack(side=LEFT)
-        Radiobutton(tipo_frame, text="Robot", variable=tipo_var, value="robot").pack(side=LEFT, padx=(10, 0))
-
-        def confirmar_creacion():
-            nombre = nombre_entry.get().strip()
-            if not nombre:
-                messagebox.showerror("Error", "El nombre es obligatorio")
-                return
-            
-            tipo = tipo_var.get()
-            
-            # Crear encargado básico (sin tareas por ahora)
-            encargado = Encargado(nombre, tipo)
-            
-            # Agregar al sistema
-            self.sistema_auto.agregar_encargado(encargado)
-            
-            messagebox.showinfo("Éxito", f"Encargado {nombre} creado correctamente")
-            self.refresh_worker_list()
-            dialogo.destroy()
-
-        Button(dialogo, text="Crear Encargado", command=confirmar_creacion,
-               bg=self.colors['primary'], fg='white', font=('Arial', 10, 'bold')).pack(pady=15)
-
-        self.root.wait_window(dialogo)
-
-    def on_task_action_change(self, event):
-        """Maneja el cambio en el combobox de acción de tarea"""
-        accion = self.new_task_action.get()
-        # Actualizar placeholder según la acción
-        if accion in ['alimentar', 'limpiar']:
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "400")
-        elif accion == 'dar_agua':
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "300")
-        else:  # recolectar_recursos
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "0")
-
-    def schedule_task(self):
-        """Programa una nueva tarea para el encargado seleccionado"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
-            messagebox.showwarning("Advertencia", "Selecciona un encargado primero")
-            return
-
-        try:
-            accion = self.new_task_action.get()
-            cantidad = int(self.new_task_cantidad.get())
-            hora = int(self.new_task_hora.get())
-            
-            if cantidad < 0:
-                raise ValueError("La cantidad debe ser positiva")
-            if hora < 0 or hora > 23:
-                raise ValueError("La hora debe estar entre 0 y 23")
-            
-            resultado = self.selected_worker.agregar_tarea(accion, cantidad, hora)
-            messagebox.showinfo("Éxito", resultado)
-            self.update_worker_display()
-            
-            # Limpiar campos
-            self.new_task_action.set("alimentar")
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "400")
-            self.new_task_hora.delete(0, END)
-            self.new_task_hora.insert(0, "8")
-            
-        except ValueError as e:
-            messagebox.showerror("Error", f"Ingresa valores válidos: {str(e)}")
-
-    def execute_automation_now(self):
-        """Ejecuta inmediatamente la automatización"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
-            messagebox.showwarning("Advertencia", "Selecciona un encargado primero")
-            return
-
-        resultado = self.selected_worker.ejecutar_tareas_programadas(self.granja)
-        messagebox.showinfo("Ejecución Completa", resultado)
-        self.update_worker_display()
-        self.refresh_storage_display()
+    # ── Eventos: Personajes ───────────────────────────────────────────────
 
     def refresh_character_list(self):
-        """Actualiza la lista de personajes en el listbox"""
         self.character_listbox.delete(0, END)
         for personaje in self.granja.personajes:
             self.character_listbox.insert(END, personaje.nombre)
 
     def on_character_select(self, event):
-        """Maneja la selección de un personaje en la lista"""
         selection = self.character_listbox.curselection()
         if selection:
-            personaje_nombre = self.character_listbox.get(selection[0])
-            self.selected_character = self.granja.buscar_personaje(personaje_nombre)
+            nombre = self.character_listbox.get(selection[0])
+            self.selected_character = self.granja.buscar_personaje(nombre)
             self.update_character_display()
 
     def update_character_display(self):
-        """Actualiza la visualización de los detalles del personaje seleccionado"""
-        if not hasattr(self, 'selected_character') or not self.selected_character:
+        if not self.selected_character:
             return
-
         p = self.selected_character
 
-        # Actualizar barras de progreso y etiquetas
         self.hunger_var.set(p.hambre)
         self.hunger_label.config(text=f"{p.hambre:.1f}%")
         self.thirst_var.set(p.sed)
@@ -1206,65 +550,28 @@ class SimuladorGranjaGUI:
         self.energy_var.set(p.energia)
         self.energy_label.config(text=f"{p.energia:.1f}%")
 
-        # Actualizar texto informativo
         self.char_info_text.config(state=NORMAL)
         self.char_info_text.delete(1.0, END)
         self.char_info_text.insert(END, f"Nombre: {p.nombre}\n")
         self.char_info_text.insert(END, f"Tipo: {p.tipo}\n")
         self.char_info_text.insert(END, f"Edad: {p.edad} años\n")
         self.char_info_text.insert(END, f"Comida consumida: {p.comida_consumida}g\n")
-        self.char_info_text.insert(END, f" Agua consumida: {p.agua_consumida}ml\n")
+        self.char_info_text.insert(END, f"Agua consumida: {p.agua_consumida}ml\n")
         self.char_info_text.config(state=DISABLED)
 
-        # Actualizar recursos disponibles
         self.char_resources_text.config(state=NORMAL)
         self.char_resources_text.delete(1.0, END)
-        total_recursos = 0
+        total = 0
         for recurso, cantidad in p.recursos_disponibles.items():
             if cantidad > 0:
                 unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
                 self.char_resources_text.insert(END, f"{recurso.replace('_', ' ').title()}: {cantidad:.1f}{unidad}\n")
-                total_recursos += cantidad
-        self.char_resources_text.insert(END, f"\nTotal: {total_recursos:.1f} unidades")
+                total += cantidad
+        self.char_resources_text.insert(END, f"\nTotal: {total:.1f} unidades")
         self.char_resources_text.config(state=DISABLED)
 
-        # Actualizar botones de interacciones especiales
-        self.update_special_actions_buttons()
-
-    def update_special_actions_buttons(self):
-        """Actualiza los botones de interacciones especiales según el personaje seleccionado"""
-        # Limpiar frame existente
-        for widget in self.special_actions_frame.winfo_children():
-            widget.destroy()
-
-        if not hasattr(self, 'selected_character') or not self.selected_character:
-            return
-
-        p = self.selected_character
-
-        # Crear botones para cada tipo de interacción especial
-        interactions = [
-            ("Lamer", self.show_lamer_dialog),
-            ("Tocar/Acariciar", self.show_tocar_dialog),
-            ("Penetrar", self.show_penetrar_dialog),
-            ("Insertar Objeto", self.show_insertar_objeto_dialog),
-            ("Poner Boca en", self.show_boca_dialog)
-        ]
-
-        for i, (texto, comando) in enumerate(interactions):
-            btn = Button(self.special_actions_frame, text=texto,
-                        command=comando,
-                        bg=self.colors['warning'], fg='white',
-                        font=('Arial', 9))
-            btn.grid(row=i//2, column=i%2, padx=5, pady=5, sticky=EW)
-
-        # Configurar expansión de columnas
-        self.special_actions_frame.columnconfigure(0, weight=1)
-        self.special_actions_frame.columnconfigure(1, weight=1)
-
     def feed_character(self):
-        """Maneja la acción de alimentar al personaje seleccionado"""
-        if not hasattr(self, 'selected_character') or not self.selected_character:
+        if not self.selected_character:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
@@ -1295,12 +602,10 @@ class SimuladorGranjaGUI:
 
         Button(dialogo, text="Alimentar", command=confirmar,
                bg=self.colors['success'], fg='white').pack(pady=10)
-
         self.root.wait_window(dialogo)
 
     def give_water_character(self):
-        """Maneja la acción de dar agua al personaje seleccionado"""
-        if not hasattr(self, 'selected_character') or not self.selected_character:
+        if not self.selected_character:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
@@ -1331,296 +636,199 @@ class SimuladorGranjaGUI:
 
         Button(dialogo, text="Dar Agua", command=confirmar,
                bg=self.colors['success'], fg='white').pack(pady=10)
-
         self.root.wait_window(dialogo)
 
     def clean_character(self):
-        """Maneja la acción de limpiar al personaje seleccionado"""
-        if not hasattr(self, 'selected_character') or not self.selected_character:
+        if not self.selected_character:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
-
         resultado = self.granja.limpiar_personaje(self.selected_character.nombre)
         messagebox.showinfo("Resultado", resultado)
         self.update_character_display()
 
     def collect_character_resources(self):
-        """Maneja la acción de recolectar recursos del personaje seleccionado"""
-        if not hasattr(self, 'selected_character') or not self.selected_character:
+        if not self.selected_character:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
-
-        self.granja.recolectar_recursos_personaje(self.selected_character.nombre)
-        messagebox.showinfo("Éxito", "Recursos recolectados y almacenados")
+        resultado = self.granja.recolectar_recursos_personaje(self.selected_character.nombre)
+        messagebox.showinfo("Resultado", resultado)
         self.update_character_display()
         self.refresh_storage_display()
 
-    # Métodos de actualización y manejo de eventos para almacenamiento
+    # ── Eventos: Almacén ──────────────────────────────────────────────────
+
     def refresh_storage_display(self):
-        """Actualiza la visualización del almacenamiento"""
-        # Limpiar treeview
-        for item in self.storage_tree.get_children():
-            self.storage_tree.delete(item)
-        
-        # Organizar recursos por tipo
-        recursos_por_tipo = defaultdict(float)
-        recursos_por_propietario = defaultdict(lambda: defaultdict(float))
-        
-        for (recurso, propietario), cantidad in self.granja.almacen.items():
-            recursos_por_tipo[recurso] += cantidad
-            recursos_por_propietario[propietario][recurso] += cantidad
-        
-        # Insertar recursos por tipo
-        for recurso in sorted(recursos_por_tipo.keys()):
-            cantidad = recursos_por_tipo[recurso]
-            unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-            self.storage_tree.insert("", "end", values=(recurso.replace('_', ' ').title(), f"{cantidad:.1f}{unidad}"))
-        
-        # Actualizar texto detallado
-        self.update_detailed_storage()
+        self.storage_text.config(state=NORMAL)
+        self.storage_text.delete(1.0, END)
+
+        if not self.granja.almacen:
+            self.storage_text.insert(END, "El almacén está vacío\n")
+        else:
+            recursos_por_tipo = defaultdict(list)
+            for (recurso, propietario), cantidad in self.granja.almacen.items():
+                if cantidad > 0:
+                    recursos_por_tipo[recurso].append((propietario, cantidad))
+
+            for recurso in sorted(recursos_por_tipo.keys()):
+                unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
+                self.storage_text.insert(END, f"\n{recurso.replace('_', ' ').title()}:\n")
+                total = 0
+                for propietario, cantidad in recursos_por_tipo[recurso]:
+                    self.storage_text.insert(END, f"  • De {propietario}: {cantidad:.1f}{unidad}\n")
+                    total += cantidad
+                self.storage_text.insert(END, f"  ➡️ Total: {total:.1f}{unidad}\n")
+
+        self.storage_text.config(state=DISABLED)
 
     def show_detailed_storage(self):
-        """Muestra una ventana detallada del almacenamiento"""
         dialogo = Toplevel(self.root)
         dialogo.title("Almacén Detallado")
         dialogo.geometry("600x400")
         dialogo.transient(self.root)
-        
-        # Frame principal
+
         main_frame = Frame(dialogo)
         main_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-        
-        # Treeview con scrollbar
+
         tree_frame = Frame(main_frame)
         tree_frame.pack(fill=BOTH, expand=True)
-        
+
         tree_scroll = Scrollbar(tree_frame)
         tree_scroll.pack(side=RIGHT, fill=Y)
-        
-        detailed_tree = Treeview(tree_frame, yscrollcommand=tree_scroll.set, selectmode="browse")
+
+        detailed_tree = ttk.Treeview(tree_frame, yscrollcommand=tree_scroll.set, selectmode="browse")
         detailed_tree.pack(fill=BOTH, expand=True)
         tree_scroll.config(command=detailed_tree.yview)
-        
-        # Configurar columnas
+
         detailed_tree["columns"] = ("propietario", "recurso", "cantidad", "unidad")
         detailed_tree.column("#0", width=0, stretch=NO)
         detailed_tree.column("propietario", width=150)
         detailed_tree.column("recurso", width=150)
         detailed_tree.column("cantidad", width=100)
         detailed_tree.column("unidad", width=80)
-        
+
         detailed_tree.heading("propietario", text="Propietario")
         detailed_tree.heading("recurso", text="Recurso")
         detailed_tree.heading("cantidad", text="Cantidad")
         detailed_tree.heading("unidad", text="Unidad")
-        
-        # Llenar con datos
+
         for (recurso, propietario), cantidad in self.granja.almacen.items():
             if cantidad > 0:
                 unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
                 detailed_tree.insert("", "end", values=(propietario, recurso.replace('_', ' ').title(), f"{cantidad:.1f}", unidad))
-        
-        # Botón cerrar
+
         Button(main_frame, text="Cerrar", command=dialogo.destroy,
                bg=self.colors['warning'], fg='white').pack(pady=10)
 
-    def update_detailed_storage(self):
-        """Actualiza el texto detallado del almacenamiento"""
-        self.storage_details_text.config(state=NORMAL)
-        self.storage_details_text.delete(1.0, END)
-        
-        if not self.granja.almacen:
-            self.storage_details_text.insert(END, "El almacén está vacío\n")
-        else:
-            # Organizar por recurso
-            recursos_por_tipo = defaultdict(list)
-            for (recurso, propietario), cantidad in self.granja.almacen.items():
-                if cantidad > 0:
-                    recursos_por_tipo[recurso].append((propietario, cantidad))
-            
-            total_general = 0
-            for recurso in sorted(recursos_por_tipo.keys()):
-                unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-                self.storage_details_text.insert(END, f"\n{recurso.replace('_', ' ').title()}:\n")
-                total_recurso = 0
-                for propietario, cantidad in recursos_por_tipo[recurso]:
-                    self.storage_details_text.insert(END, f"  • De {propietario}: {cantidad:.1f}{unidad}\n")
-                    total_recurso += cantidad
-                self.storage_details_text.insert(END, f"  ➡️ Total: {total_recurso:.1f}{unidad}\n")
-                total_general += total_recurso
-            
-            self.storage_details_text.insert(END, f"\n{'='*40}\n")
-            self.storage_details_text.insert(END, f"TOTAL GENERAL: {total_general:.1f} unidades\n")
-        
-        self.storage_details_text.config(state=DISABLED)
+    # ── Eventos: Tienda ───────────────────────────────────────────────────
 
-    # Métodos de actualización y manejo de eventos para la tienda
     def refresh_store_display(self):
-        """Actualiza la visualización de los encargos disponibles"""
-        # Limpiar treeview
-        for item in self.store_tree.get_children():
-            self.store_tree.delete(item)
-        
-        # Insertar encargos
+        self.orders_listbox.delete(0, END)
         for encargo in self.tienda.encargos_disponibles:
-            # Formatear recursos necesarios
             recursos_str = []
             for (recurso, propietario), cantidad in encargo.recursos_necesarios.items():
-                propietario_str = f" de {propietario}" if propietario else ""
+                prop_str = f" de {propietario}" if propietario else ""
                 unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-                recursos_str.append(f"{cantidad:.1f}{unidad} {recurso.replace('_', ' ')}{propietario_str}")
-            
-            recursos_texto = ", ".join(recursos_str) if recursos_str else "Ninguno"
-            
-            self.store_tree.insert("", "end", values=(
-                encargo.id,
-                encargo.descripcion,
-                recursos_texto,
-                f"${encargo.pago:.2f}",
-                encargo.cliente
-            ))
+                recursos_str.append(f"{cantidad}{unidad} {recurso.replace('_', ' ')}{prop_str}")
+            texto = f"#{encargo.id} | {' | '.join(recursos_str)} | ${encargo.pago} | {encargo.cliente}"
+            self.orders_listbox.insert(END, texto)
+
+        self.store_money_label.config(text=f"${self.tienda.dinero}")
+        self.store_completed_label.config(text=str(self.tienda.encargos_completados))
 
     def on_order_select(self, event):
-        """Maneja la selección de un encargo en la lista"""
-        selection = self.store_tree.selection()
+        selection = self.orders_listbox.curselection()
         if selection:
-            item = self.store_tree.item(selection[0])
-            encargo_id = int(item['values'][0])
+            texto = self.orders_listbox.get(selection[0])
+            try:
+                encargo_id = int(texto.split("|")[0].replace("#", "").strip())
+            except ValueError:
+                return
             self.selected_order = self.tienda.buscar_encargo_por_id(encargo_id)
             self.update_order_details()
 
     def update_order_details(self):
-        """Actualiza la visualización de los detalles del encargo seleccionado"""
-        if not hasattr(self, 'selected_order') or not self.selected_order:
+        if not self.selected_order:
             return
-
         encargo = self.selected_order
 
-        # Actualizar texto informativo
-        self.order_details_text.config(state=NORMAL)
-        self.order_details_text.delete(1.0, END)
-        self.order_details_text.insert(END, f"ID: {encargo.id}\n")
-        self.order_details_text.insert(END, f"Descripción: {encargo.descripcion}\n")
-        self.order_details_text.insert(END, f"Cliente: {encargo.cliente}\n")
-        self.order_details_text.insert(END, f"Pago: ${encargo.pago:.2f}\n\n")
-        self.order_details_text.insert(END, "Recursos necesarios:\n")
-        
+        self.order_info_text.config(state=NORMAL)
+        self.order_info_text.delete(1.0, END)
+        self.order_info_text.insert(END, f"ID: {encargo.id}\n")
+        self.order_info_text.insert(END, f"Cliente: {encargo.cliente}\n")
+        self.order_info_text.insert(END, f"Pago: ${encargo.pago}\n")
+        self.order_info_text.insert(END, "Recursos necesarios:\n")
         for (recurso, propietario), cantidad in encargo.recursos_necesarios.items():
-            propietario_str = f" (de {propietario})" if propietario else ""
+            prop_str = f" (de {propietario})" if propietario else ""
             unidad = "ml" if recurso in ["orina", "saliva", "leche", "fluido_vaginal", "vomito", "sudor"] else "g"
-            self.order_details_text.insert(END, f"  • {cantidad:.1f}{unidad} {recurso.replace('_', ' ')}{propietario_str}\n")
-        
-        self.order_details_text.config(state=DISABLED)
+            self.order_info_text.insert(END, f"  • {cantidad}{unidad} {recurso.replace('_', ' ')}{prop_str}\n")
+        self.order_info_text.config(state=DISABLED)
 
-        # Verificar si podemos completar el encargo
         self.check_order_completion()
 
     def check_order_completion(self):
-        """Verifica si el encargo seleccionado puede completarse y actualiza el estado del botón"""
-        if not hasattr(self, 'selected_order') or not self.selected_order:
-            self.complete_order_btn.config(state=DISABLED)
-            self.order_status_label.config(text="Selecciona un encargo", fg=self.colors['text_secondary'])
+        if not self.selected_order:
+            self.complete_order_button.config(state=DISABLED)
             return
-
         encargo = self.selected_order
-        puede_completar = True
-        faltantes = []
-
+        puede = True
         for (recurso, propietario), cantidad_necesaria in encargo.recursos_necesarios.items():
-            cantidad_disponible = self.granja.obtener_cantidad_total_recurso(recurso, propietario)
-            if cantidad_disponible < cantidad_necesaria:
-                puede_completar = False
-                faltantes.append(f"{recurso.replace('_', ' ')}: {cantidad_necesaria - cantidad_disponible:.1f} faltantes")
-
-        if puede_completar:
-            self.complete_order_btn.config(state=NORMAL)
-            self.order_status_label.config(text="¡Listo para completar!", fg=self.colors['success'])
-        else:
-            self.complete_order_btn.config(state=DISABLED)
-            status_text = "Faltan: " + ", ".join(faltantes)
-            self.order_status_label.config(text=status_text, fg=self.colors['error'])
+            disponible = self.granja.obtener_cantidad_total_recurso(recurso, propietario)
+            if disponible < cantidad_necesaria:
+                puede = False
+                break
+        self.complete_order_button.config(state=NORMAL if puede else DISABLED)
 
     def complete_selected_order(self):
-        """Maneja la acción de completar el encargo seleccionado"""
-        if not hasattr(self, 'selected_order') or not self.selected_order:
+        if not self.selected_order:
             messagebox.showwarning("Advertencia", "Selecciona un encargo primero")
             return
-
         if not messagebox.askyesno("Confirmar", "¿Completar este encargo?"):
             return
-
-        resultado = self.tienda.completar_encargo(self.selected_order.id, self.granja)
+        resultado = self.tienda.completar_encargo(self.selected_order.id, silent=True)
         messagebox.showinfo("Resultado", resultado)
-        
-        # Actualizar displays
+        self.selected_order = None
+        self.order_info_text.config(state=NORMAL)
+        self.order_info_text.delete(1.0, END)
+        self.order_info_text.config(state=DISABLED)
+        self.complete_order_button.config(state=DISABLED)
         self.refresh_store_display()
         self.refresh_storage_display()
-        self.update_money_display()
-        
-        # Limpiar selección
-        self.selected_order = None
-        self.order_details_text.config(state=NORMAL)
-        self.order_details_text.delete(1.0, END)
-        self.order_details_text.config(state=DISABLED)
-        self.order_status_label.config(text="Selecciona un encargo", fg=self.colors['text_secondary'])
 
-    def update_money_display(self):
-        """Actualiza la visualización del dinero"""
-        self.money_label.config(text=f"Dinero: ${self.tienda.dinero:.2f}")
+    # ── Eventos: Automatización ───────────────────────────────────────────
 
-    # Métodos de actualización y manejo de eventos para automatización
     def refresh_worker_list(self):
-        """Actualiza la lista de encargados en el listbox"""
-        self.worker_listbox.delete(0, END)
+        self.workers_listbox.delete(0, END)
         for encargado in self.sistema_auto.encargados:
             estado = "🟢 Activo" if encargado.activo else "🔴 Inactivo"
-            self.worker_listbox.insert(END, f"{encargado.nombre} ({encargado.tipo}) - {estado}")
+            self.workers_listbox.insert(END, f"{encargado.nombre} ({encargado.tipo}) - {estado}")
 
     def on_worker_select(self, event):
-        """Maneja la selección de un encargado en la lista"""
-        selection = self.worker_listbox.curselection()
+        selection = self.workers_listbox.curselection()
         if selection:
-            trabajador_nombre = self.worker_listbox.get(selection[0]).split(" (")[0]
-            self.selected_worker = self.sistema_auto.buscar_encargado(trabajador_nombre)
+            nombre = self.workers_listbox.get(selection[0]).split(" (")[0]
+            self.selected_worker = self.sistema_auto.buscar_encargado(nombre)
             self.update_worker_display()
 
     def update_worker_display(self):
-        """Actualiza la visualización de los detalles del encargado seleccionado"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
+        if not self.selected_worker:
             return
-
         encargado = self.selected_worker
 
-        # Actualizar estado
+        self.worker_info_text.config(state=NORMAL)
+        self.worker_info_text.delete(1.0, END)
         estado = "Activo" if encargado.activo else "Inactivo"
-        color_estado = self.colors['success'] if encargado.activo else self.colors['error']
-        self.worker_status_label.config(text=f"Estado: {estado}", fg=color_estado)
+        self.worker_info_text.insert(END, f"Nombre: {encargado.nombre}\n")
+        self.worker_info_text.insert(END, f"Tipo: {encargado.tipo}\n")
+        self.worker_info_text.insert(END, f"Estado: {estado}\n")
+        self.worker_info_text.insert(END, f"Tareas: {len(encargado.tareas_programadas)}\n")
+        for i, tarea in enumerate(encargado.tareas_programadas, 1):
+            self.worker_info_text.insert(END, f"  {i}. {tarea['accion']} → {tarea['personaje']}\n")
+        self.worker_info_text.config(state=DISABLED)
 
-        # Actualizar tareas programadas
-        self.worker_tasks_text.config(state=NORMAL)
-        self.worker_tasks_text.delete(1.0, END)
-        
-        if not encargado.tareas_programadas:
-            self.worker_tasks_text.insert(END, "No hay tareas programadas\n")
-        else:
-            for i, tarea in enumerate(encargado.tareas_programadas, 1):
-                accion_texto = tarea['accion'].replace('_', ' ').title()
-                cantidad_str = f"{tarea['cantidad']}{'g' if tarea['accion'] in ['alimentar', 'limpiar'] else 'ml' if tarea['accion'] in ['dar_agua'] else ''}"
-                hora_str = f"{tarea['hora']:02d}:00"
-                self.worker_tasks_text.insert(END, f"{i}. [{hora_str}] {accion_texto} - {cantidad_str}\n")
-        
-        self.worker_tasks_text.config(state=DISABLED)
-
-        # Habilitar/deshabilitar botones según estado
-        if encargado.activo:
-            self.toggle_worker_btn.config(text="Desactivar")
-            self.execute_now_btn.config(state=NORMAL)
-        else:
-            self.toggle_worker_btn.config(text="Activar")
-            self.execute_now_btn.config(state=DISABLED)
+        self.toggle_worker_btn.config(state=NORMAL)
+        self.clear_tasks_btn.config(state=NORMAL)
 
     def create_new_worker_dialog(self):
-        """Muestra el diálogo para crear un nuevo encargado"""
         dialogo = Toplevel(self.root)
         dialogo.title("Crear Nuevo Encargado")
         dialogo.geometry("350x250")
@@ -1630,15 +838,11 @@ class SimuladorGranjaGUI:
 
         Label(dialogo, text="Crear Nuevo Encargado", font=('Arial', 12, 'bold')).pack(pady=10)
 
-        # Nombre
-        Frame(dialogo).pack(pady=2)
         Label(dialogo, text="Nombre:").pack(anchor=W, padx=20)
         nombre_entry = Entry(dialogo, width=25)
         nombre_entry.pack(padx=20, pady=2)
         nombre_entry.insert(0, "Encargado")
 
-        # Tipo
-        Frame(dialogo).pack(pady=2)
         Label(dialogo, text="Tipo:").pack(anchor=W, padx=20)
         tipo_var = StringVar(value="humano")
         tipo_frame = Frame(dialogo)
@@ -1646,124 +850,87 @@ class SimuladorGranjaGUI:
         Radiobutton(tipo_frame, text="Humano", variable=tipo_var, value="humano").pack(side=LEFT)
         Radiobutton(tipo_frame, text="Robot", variable=tipo_var, value="robot").pack(side=LEFT, padx=(10, 0))
 
-        def confirmar_creacion():
+        def confirmar():
             nombre = nombre_entry.get().strip()
             if not nombre:
                 messagebox.showerror("Error", "El nombre es obligatorio")
                 return
-            
-            tipo = tipo_var.get()
-            
-            # Crear encargado básico (sin tareas por ahora)
-            encargado = Encargado(nombre, tipo)
-            
-            # Agregar al sistema
-            self.sistema_auto.agregar_encargado(encargado)
-            
+            encargado = Encargado(nombre, tipo_var.get())
+            self.sistema_auto.encargados.append(encargado)
             messagebox.showinfo("Éxito", f"Encargado {nombre} creado correctamente")
             self.refresh_worker_list()
             dialogo.destroy()
 
-        Button(dialogo, text="Crear Encargado", command=confirmar_creacion,
+        Button(dialogo, text="Crear Encargado", command=confirmar,
                bg=self.colors['primary'], fg='white', font=('Arial', 10, 'bold')).pack(pady=15)
-
         self.root.wait_window(dialogo)
 
-    def on_task_action_change(self, event):
-        """Maneja el cambio en el combobox de acción de tarea"""
-        accion = self.new_task_action.get()
-        # Actualizar placeholder según la acción
-        if accion in ['alimentar', 'limpiar']:
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "400")
-        elif accion == 'dar_agua':
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "300")
-        else:  # recolectar_recursos
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "0")
-
     def schedule_task(self):
-        """Programa una nueva tarea para el encargado seleccionado"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
+        if not self.selected_worker:
             messagebox.showwarning("Advertencia", "Selecciona un encargado primero")
             return
 
-        try:
-            accion = self.new_task_action.get()
-            cantidad = int(self.new_task_cantidad.get())
-            hora = int(self.new_task_hora.get())
-            
-            if cantidad < 0:
-                raise ValueError("La cantidad debe ser positiva")
-            if hora < 0 or hora > 23:
-                raise ValueError("La hora debe estar entre 0 y 23")
-            
-            resultado = self.selected_worker.agregar_tarea(accion, cantidad, hora)
-            messagebox.showinfo("Éxito", resultado)
-            self.update_worker_display()
-            
-            # Limpiar campos
-            self.new_task_action.set("alimentar")
-            self.new_task_cantidad.delete(0, END)
-            self.new_task_cantidad.insert(0, "400")
-            self.new_task_hora.delete(0, END)
-            self.new_task_hora.insert(0, "8")
-            
-        except ValueError as e:
-            messagebox.showerror("Error", f"Ingresa valores válidos: {str(e)}")
+        personaje_nombre = self.task_character_var.get()
+        accion = self.task_action_var.get()
+        if not personaje_nombre or not accion:
+            messagebox.showwarning("Advertencia", "Selecciona un personaje y una acción")
+            return
+
+        parametros = {}
+        if accion in ("alimentar", "dar_agua"):
+            try:
+                cantidad = int(self.task_cantidad_entry.get())
+                if cantidad <= 0:
+                    raise ValueError
+                parametros['cantidad'] = cantidad
+            except ValueError:
+                messagebox.showerror("Error", "Ingresa una cantidad válida")
+                return
+
+        resultado = self.selected_worker.programar_tarea(personaje_nombre, accion, parametros)
+        messagebox.showinfo("Éxito", resultado)
+        self.update_worker_display()
 
     def execute_automation_now(self):
-        """Ejecuta inmediatamente la automatización"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
-            messagebox.showwarning("Advertencia", "Selecciona un encargado primero")
-            return
-
-        resultado = self.selected_worker.ejecutar_tareas_programadas(self.granja)
-        messagebox.showinfo("Ejecución Completa", resultado)
-        self.update_worker_display()
+        self.sistema_auto.ejecutar_todos()
+        messagebox.showinfo("Ejecución Completa", "Automatización ejecutada correctamente")
         self.refresh_storage_display()
+        self.refresh_worker_list()
+        if self.selected_worker:
+            self.update_worker_display()
+
+    def toggle_worker(self):
+        if not self.selected_worker:
+            return
+        resultado = self.selected_worker.toggle_estado()
+        messagebox.showinfo("Resultado", resultado)
+        self.refresh_worker_list()
+        self.update_worker_display()
 
     def clear_all_tasks(self):
-        """Elimina todas las tareas programadas del encargado seleccionado"""
-        if not hasattr(self, 'selected_worker') or not self.selected_worker:
-            messagebox.showwarning("Advertencia", "Selecciona un encargado primero")
+        if not self.selected_worker:
             return
-
-        if messagebox.askyesno("Confirmar", "¿Eliminar todas las tareas programadas de este encargado?"):
-            self.selected_worker.tareas_programadas.clear()
-            messagebox.showinfo("Éxito", "Todas las tareas han sido eliminadas")
+        if messagebox.askyesno("Confirmar", "¿Eliminar todas las tareas de este encargado?"):
+            resultado = self.selected_worker.limpiar_tareas()
+            messagebox.showinfo("Éxito", resultado)
             self.update_worker_display()
 
-            self.update_worker_display()
+    # ── Eventos: Interacciones ────────────────────────────────────────────
 
-    # Métodos de actualización y manejo de eventos para interacciones
     def on_interaction_char_select(self, event):
-        """Maneja la selección de un personaje para interacciones"""
-        selection = self.interaction_char_listbox.curselection()
-        if selection:
-            personaje_nombre = self.interaction_char_listbox.get(selection[0])
-            self.selected_interaction_char = self.granja.buscar_personaje(personaje_nombre)
-            self.update_interaction_char_display()
+        nombre = self.interaction_char_var.get()
+        self.selected_interaction_char = self.granja.buscar_personaje(nombre)
+        if self.selected_interaction_char:
+            self.append_interaction_result(f"Seleccionado: {nombre}")
 
-    def update_interaction_char_display(self):
-        """Actualiza la visualización del personaje seleccionado para interacciones"""
-        if not hasattr(self, 'selected_interaction_char') or not self.selected_interaction_char:
-            return
-
-        p = self.selected_interaction_char
-
-        # Actualizar texto informativo
-        self.interaction_info_text.config(state=NORMAL)
-        self.interaction_info_text.delete(1.0, END)
-        self.interaction_info_text.insert(END, f"Nombre: {p.nombre}\n")
-        self.interaction_info_text.insert(END, f"Tipo: {p.tipo}\n")
-        self.interaction_info_text.insert(END, f"Edad: {p.edad} años\n")
-        self.interaction_info_text.config(state=DISABLED)
+    def append_interaction_result(self, texto):
+        self.interaction_results_text.config(state=NORMAL)
+        self.interaction_results_text.insert(END, texto + "\n")
+        self.interaction_results_text.see(END)
+        self.interaction_results_text.config(state=DISABLED)
 
     def interaction_lamer(self):
-        """Maneja la interacción de lamer"""
-        if not hasattr(self, 'selected_interaction_char') or not self.selected_interaction_char:
+        if not self.selected_interaction_char:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
@@ -1775,27 +942,24 @@ class SimuladorGranjaGUI:
         dialogo.grab_set()
 
         Label(dialogo, text=f"Lamer a {self.selected_interaction_char.nombre}").pack(pady=10)
-
         Label(dialogo, text="Zona:").pack()
         zona_var = StringVar(value="cara")
-        zonas = ["cara", "pecho", "genitales", "pies", "espalda", "axilas"]
-        zona_menu = ttk.Combobox(dialogo, textvariable=zona_var, values=zonas, state="readonly")
-        zona_menu.pack(pady=5)
+        ttk.Combobox(dialogo, textvariable=zona_var,
+                     values=["cara", "pecho", "genitales", "pies", "espalda", "axilas"],
+                     state="readonly").pack(pady=5)
 
         def confirmar():
-            zona = zona_var.get()
-            resultado = self.selected_interaction_char.interactuar_lamer(zona)
+            resultado = self.selected_interaction_char.interactuar_lamer(zona_var.get())
+            self.append_interaction_result(resultado)
             messagebox.showinfo("Resultado", resultado)
             dialogo.destroy()
 
         Button(dialogo, text="Lamer", command=confirmar,
                bg=self.colors['success'], fg='white').pack(pady=10)
-
         self.root.wait_window(dialogo)
 
     def interaction_tocar(self):
-        """Maneja la interacción de tocar/acariciar"""
-        if not hasattr(self, 'selected_interaction_char') or not self.selected_interaction_char:
+        if not self.selected_interaction_char:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
@@ -1806,36 +970,30 @@ class SimuladorGranjaGUI:
         dialogo.transient(self.root)
         dialogo.grab_set()
 
-        Label(dialogo, text=f"Tocar/Acariciar a {self.selected_interaction_char.nombre}").pack(pady=10)
-
+        Label(dialogo, text=f"Tocar a {self.selected_interaction_char.nombre}").pack(pady=10)
         Label(dialogo, text="Zona:").pack()
         zona_var = StringVar(value="cara")
-        zonas = ["cara", "pecho", "genitales", "muslos", "espalda", "cabello"]
-        zona_menu = ttk.Combobox(dialogo, textvariable=zona_var, values=zonas, state="readonly")
-        zona_menu.pack(pady=5)
+        ttk.Combobox(dialogo, textvariable=zona_var,
+                     values=["cara", "pecho", "genitales", "muslos", "espalda", "cabello"],
+                     state="readonly").pack(pady=5)
 
         Label(dialogo, text="Intensidad:").pack(pady=(10, 0))
         intensidad_var = StringVar(value="normal")
-        intensidades = [("Suave", "suave"), ("Normal", "normal"), ("Intenso", "intenso")]
-        for texto, valor in intensidades:
-            Radiobutton(dialogo, text=texto, variable=intensidad_var,
-                       value=valor).pack(anchor=W)
+        for texto, valor in [("Suave", "suave"), ("Normal", "normal"), ("Intenso", "intenso")]:
+            Radiobutton(dialogo, text=texto, variable=intensidad_var, value=valor).pack(anchor=W)
 
         def confirmar():
-            zona = zona_var.get()
-            intensidad = intensidad_var.get()
-            resultado = self.selected_interaction_char.interactuar_tocar(zona, intensidad)
+            resultado = self.selected_interaction_char.interactuar_tocar(zona_var.get(), intensidad_var.get())
+            self.append_interaction_result(resultado)
             messagebox.showinfo("Resultado", resultado)
             dialogo.destroy()
 
         Button(dialogo, text="Tocar/Acariciar", command=confirmar,
                bg=self.colors['success'], fg='white').pack(pady=10)
-
         self.root.wait_window(dialogo)
 
     def interaction_penetrar(self):
-        """Maneja la interacción de penetrar"""
-        if not hasattr(self, 'selected_interaction_char') or not self.selected_interaction_char:
+        if not self.selected_interaction_char:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
@@ -1847,75 +1005,71 @@ class SimuladorGranjaGUI:
         dialogo.grab_set()
 
         Label(dialogo, text=f"Penetrar a {self.selected_interaction_char.nombre}").pack(pady=10)
-
         Label(dialogo, text="Agujero:").pack()
         agujero_var = StringVar(value="vaginal")
-        agujeros = ["vaginal", "anal", "oral"]
-        agujero_menu = ttk.Combobox(dialogo, textvariable=agujero_var, values=agujeros, state="readonly")
-        agujero_menu.pack(pady=5)
+        ttk.Combobox(dialogo, textvariable=agujero_var,
+                     values=["vaginal", "anal", "oral"], state="readonly").pack(pady=5)
 
         Label(dialogo, text="Objeto:").pack(pady=(10, 0))
         objeto_var = StringVar(value="ninguno")
-        objetos = [("Ninguno", "ninguno"), ("Dedo", "dedo"),
-                  ("Juguete Pequeño", "juguete_pequeño"),
-                  ("Juguete Grande", "juguete_grande")]
-        for texto, valor in objetos:
-            Radiobutton(dialogo, text=texto, variable=objeto_var,
-                       value=valor).pack(anchor=W)
+        for texto, valor in [("Ninguno", "ninguno"), ("Dedo", "dedo"),
+                             ("Juguete Pequeño", "juguete_pequeño"),
+                             ("Juguete Grande", "juguete_grande")]:
+            Radiobutton(dialogo, text=texto, variable=objeto_var, value=valor).pack(anchor=W)
 
         def confirmar():
-            agujero = agujero_var.get()
             objeto = objeto_var.get() if objeto_var.get() != "ninguno" else None
-            resultado = self.selected_interaction_char.interactuar_penetrar(agujero, objeto)
+            resultado = self.selected_interaction_char.interactuar_penetrar(agujero_var.get(), objeto)
+            self.append_interaction_result(resultado)
             messagebox.showinfo("Resultado", resultado)
             dialogo.destroy()
 
         Button(dialogo, text="Penetrar", command=confirmar,
                bg=self.colors['success'], fg='white').pack(pady=10)
-
         self.root.wait_window(dialogo)
 
     def interaction_insertar_objeto(self):
-        """Maneja la interacción de insertar objeto"""
-        if not hasattr(self, 'selected_interaction_char') or not self.selected_interaction_char:
+        if not self.selected_interaction_char:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
         dialogo = Toplevel(self.root)
         dialogo.title("Insertar Objeto en Personaje")
-        dialogo.geometry("300x150")
+        dialogo.geometry("350x200")
         dialogo.resizable(False, False)
         dialogo.transient(self.root)
         dialogo.grab_set()
 
-        Label(dialogo, text=f"Insertar Objeto en {self.selected_interaction_char.nombre}").pack(pady=10)
+        Label(dialogo, text=f"Insertar objeto en {self.selected_interaction_char.nombre}").pack(pady=10)
 
         Label(dialogo, text="Agujero:").pack()
         agujero_var = StringVar(value="vaginal")
-        agujeros = ["vaginal", "anal", "oral"]
-        agujero_menu = ttk.Combobox(dialogo, textvariable=agujero_var, values=agujeros, state="readonly")
-        agujero_menu.pack(pady=5)
+        ttk.Combobox(dialogo, textvariable=agujero_var,
+                     values=["vaginal", "anal", "oral"], state="readonly").pack(pady=5)
 
-        Label(dialogo, text="Objeto:").pack(pedy=(10, 0))
+        Label(dialogo, text="Objeto:").pack(pady=(10, 0))
         objeto_entry = Entry(dialogo, width=20)
-        objeto_entry.pack(pedy=5)
+        objeto_entry.pack(pady=5)
         objeto_entry.insert(0, "objeto")
 
+        Label(dialogo, text="Tamaño:").pack(pady=(10, 0))
+        tamano_var = StringVar(value="mediano")
+        ttk.Combobox(dialogo, textvariable=tamano_var,
+                     values=["pequeño", "mediano", "grande"], state="readonly").pack(pady=5)
+
         def confirmar():
-            agujero = agujero_var.get()
-            objeto = objeto_entry.get()
-            resultado = self.selected_interaction_char.insertar_objeto(agujero, objeto)
+            resultado = self.selected_interaction_char.insertar_objeto(
+                agujero_var.get(), objeto_entry.get(), tamano_var.get())
+            self.append_interaction_result(resultado)
             messagebox.showinfo("Resultado", resultado)
             dialogo.destroy()
 
         Button(dialogo, text="Insertar Objeto", command=confirmar,
-               bg=self.colors['success'], fg='white').pack(pedy=10)
-
+               bg=self.colors['success'], fg='white').pack(pady=10)
         self.root.wait_window(dialogo)
 
     def interaction_boca(self):
-        """Maneja la interacción de poner boca en"""
-        if not hasattr(self, 'selected_interaction_char') or not self.selected_interaction_char:
+        if not self.selected_interaction_char:
             messagebox.showwarning("Advertencia", "Selecciona un personaje primero")
             return
 
@@ -1926,81 +1080,129 @@ class SimuladorGranjaGUI:
         dialogo.transient(self.root)
         dialogo.grab_set()
 
-        Label(dialogo, text=f"Poner boca en {self.selected_interaction_char.nombre}").pack(pedy=10)
-
+        Label(dialogo, text=f"Poner boca en {self.selected_interaction_char.nombre}").pack(pady=10)
         Label(dialogo, text="Zona:").pack()
         zona_var = StringVar(value="genitales")
-        zonas = ["genitales", "ano", "boca", "axilas"]
-        zona_menu = ttk.Combobox(dialogo, textvariable=zona_var, values=zonas, state="readonly")
-        zona_menu.pack(pedy=5)
+        ttk.Combobox(dialogo, textvariable=zona_var,
+                     values=["genitales", "ano", "boca", "axilas"], state="readonly").pack(pady=5)
 
         def confirmar():
-            zona = zona_var.get()
-            resultado = self.selected_interaction_char.interactuar_directo(self.selected_interaction_char, zona)
+            resultado = self.selected_interaction_char.interactuar_directo(
+                self.selected_interaction_char, zona_var.get())
+            self.append_interaction_result(resultado)
             messagebox.showinfo("Resultado", resultado)
             dialogo.destroy()
 
         Button(dialogo, text="Poner Boca en", command=confirmar,
-               bg=self.colors['success'], fg='white').pack(pedy=10)
-
+               bg=self.colors['success'], fg='white').pack(pady=10)
         self.root.wait_window(dialogo)
 
-    # Métodos de actualización y manejo de eventos para controles
+    # ── Eventos: Controles / Tiempo / Guardado ────────────────────────────
+
     def advance_one_hour(self):
-        """Avanza el juego una hora"""
         self.granja.avanzar_tiempo()
-        self.update_time_display()
-        self.refresh_character_list()
-        if hasattr(self, 'selected_character') and self.selected_character:
-            self.update_character_display()
-        self.refresh_storage_display()
-        self.refresh_store_display()
-        self.refresh_worker_list()
+        self.after_time_advance()
 
     def advance_three_hours(self):
-        """Avanza el juego tres horas"""
         for _ in range(3):
             self.granja.avanzar_tiempo()
-        self.update_time_display()
-        self.refresh_character_list()
-        if hasattr(self, 'selected_character') and self.selected_character:
-            self.update_character_display()
-        self.refresh_storage_display()
-        self.refresh_store_display()
-        self.refresh_worker_list()
+        self.after_time_advance()
 
     def advance_six_hours(self):
-        """Avanza el juego seis horas"""
         for _ in range(6):
             self.granja.avanzar_tiempo()
+        self.after_time_advance()
+
+    def after_time_advance(self):
         self.update_time_display()
-        self.refresh_character_list()
-        if hasattr(self, 'selected_character') and self.selected_character:
+        if self.selected_character:
             self.update_character_display()
         self.refresh_storage_display()
         self.refresh_store_display()
-        self.refresh_worker_list()
-
-    def save_game_dialog(self):
-        """Muestra el diálogo para guardar el juego"""
-        messagebox.showinfo("Guardar Partida", "Funcionalidad de guardado en desarrollo\n\nPróximamente: guardar partida actual")
-
-    def load_game_dialog(self):
-        """Muestra el diálogo para cargar el juego"""
-        messagebox.showinfo("Cargar Partida", "Funcionalidad de carga en desarrollo\n\nPróximamente: cargar partida guardada")
-
-    def list_saved_games(self):
-        """Lista las partidas guardadas"""
-        messagebox.showinfo("Partidas Guardadas", "Funcionalidad en desarrollo\n\nPróximamente: visualizar partidas guardadas")
 
     def update_time_display(self):
-        """Actualiza la visualización del tiempo"""
         hora = self.granja.hora_actual
         periodo = "AM" if hora < 12 else "PM"
         hora_12 = hora % 12
         if hora_12 == 0:
             hora_12 = 12
-        self.time_label.config(text=f"Hora: {hora_12:02d}:00 {periodo}")
+        self.game_time_label.config(text=f"Hora: {hora_12:02d}:00 {periodo}")
+        self.status_time_label.config(text=f"Hora: {hora_12:02d}:00 {periodo}")
+
+    def save_game_dialog(self):
+        dialogo = Toplevel(self.root)
+        dialogo.title("Guardar Partida")
+        dialogo.geometry("350x150")
+        dialogo.resizable(False, False)
+        dialogo.transient(self.root)
+        dialogo.grab_set()
+
+        Label(dialogo, text="Nombre de la partida:").pack(pady=10)
+        nombre_entry = Entry(dialogo, width=30)
+        nombre_entry.pack(pady=5)
+        nombre_entry.insert(0, "")
+
+        def guardar():
+            nombre = nombre_entry.get().strip()
+            exito, mensaje = self.sistema_guardado.guardar_partida(
+                self.granja, self.tienda, self.sistema_auto, nombre if nombre else None)
+            messagebox.showinfo("Guardar", mensaje)
+            dialogo.destroy()
+
+        Button(dialogo, text="Guardar", command=guardar,
+               bg=self.colors['success'], fg='white', font=('Arial', 10, 'bold')).pack(pady=10)
+        self.root.wait_window(dialogo)
+
+    def load_game_dialog(self):
+        partidas = self.sistema_guardado.listar_partidas()
+        if not partidas:
+            messagebox.showinfo("Info", "No hay partidas guardadas")
+            return
+
+        dialogo = Toplevel(self.root)
+        dialogo.title("Cargar Partida")
+        dialogo.geometry("350x300")
+        dialogo.resizable(False, False)
+        dialogo.transient(self.root)
+        dialogo.grab_set()
+
+        Label(dialogo, text="Selecciona una partida:", font=('Arial', 10)).pack(pady=10)
+
+        listbox = Listbox(dialogo, font=('Arial', 9))
+        listbox.pack(fill=BOTH, expand=True, padx=20, pady=10)
+        for p in partidas:
+            listbox.insert(END, p)
+
+        def cargar():
+            sel = listbox.curselection()
+            if sel:
+                nombre = listbox.get(sel[0])
+                datos, mensaje = self.sistema_guardado.cargar_partida(nombre)
+                if datos:
+                    self.granja, self.tienda, self.sistema_auto = restaurar_desde_datos(datos)
+                    messagebox.showinfo("Éxito", "Partida cargada correctamente")
+                    self.selected_character = None
+                    self.selected_order = None
+                    self.selected_worker = None
+                    self.refresh_all()
+                    dialogo.destroy()
+                else:
+                    messagebox.showerror("Error", mensaje)
+
+        Button(dialogo, text="Cargar", command=cargar,
+               bg=self.colors['success'], fg='white', font=('Arial', 10, 'bold')).pack(pady=10)
+        self.root.wait_window(dialogo)
+
+    def list_saved_games(self):
+        partidas = self.sistema_guardado.listar_partidas()
+        if not partidas:
+            messagebox.showinfo("Partidas Guardadas", "No hay partidas guardadas")
+            return
+        texto = "Partidas guardadas:\n\n"
+        for i, p in enumerate(partidas, 1):
+            texto += f"  {i}. {p}\n"
+        messagebox.showinfo("Partidas Guardadas", texto)
+
 
 if __name__ == "__main__":
     root = Tk()

@@ -28,9 +28,9 @@ def demo_completa():
     
     # Crear 3 personajes
     personajes = [
-        Personaje("Amber", "Outrider"),
-        Personaje("Barbara", "Diaconisa"),
-        Personaje("Fischl", "Investigadora")
+        Personaje("Amber", "Outrider", 18),
+        Personaje("Barbara", "Diaconisa", 16),
+        Personaje("Fischl", "Investigadora", 16)
     ]
     
     for p in personajes:
@@ -143,6 +143,8 @@ def demo_completa():
     
     # ========== PASO 10: SISTEMA DE AUTOMATIZACIÓN ==========
     separador("PASO 10: CONFIGURANDO AUTOMATIZACIÓN")
+    
+    sistema_auto = SistemaAutomatizacion(granja)
     
     print("\n🤖 Creando encargado automático...")
     encargado = sistema_auto.crear_encargado("Robot-01", "maquina_recoleccion")

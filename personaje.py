@@ -280,34 +280,30 @@ class Personaje:
     
 
     def interactuar_directo(self, personaje, zona):
-        """Interacción directa con el personaje sin almacenar el recurso"""
+        """Interacción directa con el personaje consumiendo el recurso directamente"""
         if zona == "genitales":
             orina = personaje.recursos_disponibles.get("orina", 0)
             if orina > 0:
-                print(f"💦 Has metido la vulva de {personaje.nombre} en tu boca y bebiste {orina:.1f}ml de orina directamente de sus genitales")
                 personaje.recursos_disponibles["orina"] = 0
-            else:
-                return "❌ No hay orina disponible en los genitales de este personaje"
+                return f"💦 Has bebido {orina:.1f}ml de orina directamente de los genitales de {personaje.nombre}"
+            return "❌ No hay orina disponible en los genitales de este personaje"
         elif zona == "ano":
             excrementos = personaje.recursos_disponibles.get("excrementos", 0)
             if excrementos > 0:
-                print(f"💩 Has rebuscado con tu lengua y comiste {excrementos:.1f}g de excrementos directamente del ano de {personaje.nombre}")
                 personaje.recursos_disponibles["excrementos"] = 0
-            else:
-                return "❌ No hay excrementos disponibles en el ano de este personaje"
+                return f"💩 Has comido {excrementos:.1f}g de excrementos directamente del ano de {personaje.nombre}"
+            return "❌ No hay excrementos disponibles en el ano de este personaje"
         elif zona == "boca":
             saliva = personaje.recursos_disponibles.get("saliva", 0)
             if saliva > 0:
-                print(f"💧 Has besado a Aino y ella te ha pasado {saliva:.1f}ml de saliva que aprovechaste para tragarla")
                 personaje.recursos_disponibles["saliva"] = 0
-            else:
-                return "❌ No hay saliva disponible en la boca de este personaje"
+                return f"💧 Has besado a {personaje.nombre} y tragaste {saliva:.1f}ml de saliva"
+            return "❌ No hay saliva disponible en la boca de este personaje"
         elif zona == "axilas":
             sudor = personaje.recursos_disponibles.get("sudor", 0)
             if sudor > 0:
-                print(f"💦 Lamiste de arriba a abajo las axilas de {personaje.nombre} y bebiste {sudor:.1f}ml de sudor directamente de sus axilas")
                 personaje.recursos_disponibles["sudor"] = 0
-            else:
-                return "❌ No hay sudor disponible en las axilas de este personaje"
+                return f"💦 Lamiste las axilas de {personaje.nombre} y bebiste {sudor:.1f}ml de sudor"
+            return "❌ No hay sudor disponible en las axilas de este personaje"
         else:
             return "❌ Zona no válida"
